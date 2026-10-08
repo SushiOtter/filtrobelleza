@@ -6,7 +6,7 @@ La cámara requiere `localhost` o HTTPS y permiso del navegador. Usar Chrome o E
 
 - La interfaz usa una estética profesional en negro, blanco y rojo.
 - `js/product-data.js` contiene productos, precios, tonos, ubicaciones y looks de demostración; no son un catálogo ni existencias reales.
-- `js/main.js` captura el vídeo en el dispositivo y aplica una simulación visual guiada por landmarks faciales. El vídeo no se sube ni se almacena.
+- `js/main.js` captura el vídeo en el dispositivo y aplica pigmentos con mezcla de luz/sombra, bordes suavizados y ajuste a landmarks faciales para preservar parte de la textura. Sigue siendo una simulación orientativa, no un análisis de segmentación cosmética profesional; el vídeo no se sube ni se almacena.
 - La detección requiere descargar MediaPipe y su modelo desde sus CDN. Se intenta aceleración GPU y se usa CPU como alternativa.
 - «Guardar» genera una imagen PNG con la captura y los tonos elegidos; el usuario decide si la descarga. La imagen no se transmite a un servidor.
 - La aplicación no genera códigos QR ni comparte la selección por URL: esa función necesita un servicio y una URL pública.

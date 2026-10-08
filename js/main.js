@@ -89,6 +89,7 @@ const LLID=[33,246,161,160,159,158,157,173,133],LBR=[70,63,105,66,107],RLID=[263
 const FOPT={base:[['matte','Mate'],['glow','Luminoso']],blush:[['matte','Mate'],['satin','Satinado']],lips:[['matte','Mate'],['satin','Satinado'],['gloss','Brillo']],eyes:[['matte','Mate'],['satin','Satinado'],['glitter','Glitter']],liner:[['thin','Fino'],['classic','Clásico'],['wing','Alado']],lash:[['natural','Natural'],['volume','Volumen']],brow:[['natural','Natural'],['defined','Definida']]};
 const FDEF={base:'matte',blush:'matte',lips:'satin',eyes:'matte',liner:'classic',lash:'natural',brow:'natural'};
 const cv=$('#cv'),cx=cv.getContext('2d'),cvB=$('#cvB'),cxB=cvB.getContext('2d');
+const pigmentCanvas=document.createElement('canvas'),pigmentCtx=pigmentCanvas.getContext('2d');
 
 /* Luz y calibración: la calibración (?calibrar) mide una tarjeta gris con la luz real del kiosco */
 const CAL=(()=>{try{return JSON.parse(localStorage.getItem('kiosco.cal'))}catch(e){return null}})();
@@ -130,7 +131,7 @@ const cl=x=>Math.max(0,Math.min(1,x));
 
 function draw(v){
  const st=$('#stage'),W=st.clientWidth,H=st.clientHeight,dpr=devicePixelRatio||1;
- for(const c of [cv,cvB])if(c.width!==Math.round(W*dpr)||c.height!==Math.round(H*dpr)){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr)}
+ for(const c of [cv,cvB,pigmentCanvas])if(c.width!==Math.round(W*dpr)||c.height!==Math.round(H*dpr)){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr)}
  for(const c of [cx,cxB]){c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,W,H)}
  if(!v.videoWidth)return;
  const vw=v.videoWidth,vh=v.videoHeight,sc=Math.max(W/vw,H/vh),ox=(W-vw*sc)/2,oy=(H-vh*sc)/2;
@@ -146,6 +147,16 @@ function draw(v){
  const P=i=>[LM[i].x*vw*sc+ox,LM[i].y*vh*sc+oy];
  const path=(idx,p=new Path2D())=>{idx.forEach((i,k)=>{const [x,y]=P(i);k?p.lineTo(x,y):p.moveTo(x,y)});p.closePath();return p};
  const fw=Math.hypot(...P(234).map((a,k)=>a-P(454)[k]));
+ const facePoints=OVAL.map(P),faceBounds=facePoints.reduce((b,p)=>({left:Math.min(b.left,p[0]),top:Math.min(b.top,p[1]),right:Math.max(b.right,p[0]),bottom:Math.max(b.bottom,p[1])}),{left:W,top:H,right:0,bottom:0});
+ const pad=fw*.04,x0=Math.max(0,faceBounds.left-pad),y0=Math.max(0,faceBounds.top-pad),x1=Math.min(W,faceBounds.right+pad),y1=Math.min(H,faceBounds.bottom+pad);
+ const outW=Math.max(1,Math.ceil((x1-x0)*dpr)),outH=Math.max(1,Math.ceil((y1-y0)*dpr));
+ if(pigmentCanvas.width!==outW||pigmentCanvas.height!==outH){pigmentCanvas.width=outW;pigmentCanvas.height=outH}
+ const pigment=(shape,hex,alpha,blend,blur=0,clipShape=null,rule='nonzero')=>{
+  pigmentCtx.setTransform(1,0,0,1,0,0);pigmentCtx.clearRect(0,0,outW,outH);
+  pigmentCtx.setTransform(dpr,0,0,dpr,-x0*dpr,-y0*dpr);pigmentCtx.save();
+  pigmentCtx.filter=blur?`blur(${blur}px)`:'none';pigmentCtx.fillStyle=hex;pigmentCtx.fill(shape,rule);pigmentCtx.restore();
+  cx.save();if(clipShape)cx.clip(clipShape,'evenodd');cx.globalCompositeOperation=blend;cx.globalAlpha=alpha;cx.drawImage(pigmentCanvas,x0,y0,x1-x0,y1-y0);cx.restore();
+ };
  const spotXY=(x,y,r,hex,a,mode)=>{const g=cx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,hex);g.addColorStop(1,hex+'00');
   cx.save();cx.globalCompositeOperation=mode;cx.globalAlpha=Math.min(1,Math.max(0,a));cx.fillStyle=g;cx.beginPath();cx.arc(x,y,r,0,7);cx.fill();cx.restore()};
  const spot=(i,r,hex,a,mode)=>{const [x,y]=P(i);spotXY(x,y,r,hex,a,mode)};
@@ -153,29 +164,32 @@ function draw(v){
  const geoms=[[eyeGeom(LLID,LBR,P),fL],[eyeGeom(RLID,RBR,P),fR]];
 
  if(L.base){const b=L.base,i=b.i,p=new Path2D();[OVAL,LEYE,REYE,LIPO,LBROW,RBROW].forEach(x=>path(x,p));
-  cx.save();cx.filter='blur(9px)';cx.fillStyle=b.hex;
-  cx.globalCompositeOperation='multiply';cx.globalAlpha=.12+.38*i;cx.fill(p,'evenodd');
-  cx.globalCompositeOperation='color';cx.globalAlpha=.15+.4*i;cx.fill(p,'evenodd');cx.restore();
-  if(b.f==='glow')[151,205,425,168].forEach(k=>spot(k,fw*.09,'#FFFFFF',.08+.18*i,'screen'))}
- if(L.blush){const b=L.blush;[[205,fL],[425,fR]].forEach(([i,f])=>{spot(i,fw*.17,b.hex,(.15+.65*b.i)*f,'source-over');if(b.f==='satin')spot(i,fw*.07,'#FFFFFF',(.05+.1*b.i)*f,'screen')})}
- if(L.glow){const g=L.glow;[[117,fL],[346,fR]].forEach(([i,f])=>spot(i,fw*.08,g.hex,(.2+.7*g.i)*f,'screen'));spot(168,fw*.05,g.hex,(.15+.5*g.i)*F,'screen')}
+  pigment(p,b.hex,.36*i,'soft-light',fw*.008,p,'evenodd');
+  pigment(p,b.hex,.24*i,'multiply',fw*.003,p,'evenodd');
+  if(b.f==='glow')[[151,.08],[205,.09],[425,.09],[168,.05]].forEach(([k,r])=>spot(k,fw*r,'#FFF6E8',.18*i,'screen'))}
+ if(L.blush){const b=L.blush;[[205,fL],[425,fR]].forEach(([i,f])=>{
+  spot(i,fw*.145,b.hex,.34*b.i*f,'soft-light');
+  spot(i,fw*.095,b.hex,.15*b.i*f,'multiply');
+  if(b.f==='satin')spot(i,fw*.065,'#FFF4EC',.09*b.i*f,'screen')
+ })}
+ if(L.glow){const g=L.glow;[[117,fL],[346,fR]].forEach(([i,f])=>spot(i,fw*.075,g.hex,.31*g.i*f,'screen'));spot(168,fw*.045,g.hex,.28*g.i*F,'screen')}
  if(L.brow){const b=L.brow,i=b.i,def=b.f==='defined';[[LBROW,fL],[RBROW,fR]].forEach(([idx,f])=>{if(f<.02)return;const p=path(idx);
-  cx.save();cx.filter=`blur(${def?.6:1.6}px)`;cx.fillStyle=b.hex;
-  cx.globalCompositeOperation='multiply';cx.globalAlpha=Math.min(1,(.2+.5*i+(def?.15:0))*f);cx.fill(p);
-  cx.globalCompositeOperation='color';cx.globalAlpha=Math.min(1,(.2+.35*i)*f);cx.fill(p);cx.restore()})}
+  pigment(p,b.hex,(.3*i+(def?.06*i:0))*f,'multiply',fw*.003,p);
+  pigment(p,b.hex,.17*i*f,'soft-light',fw*.002,p);
+ })}
  if(L.eyes){const e=L.eyes,i=e.i,hole=new Path2D();hole.rect(0,0,W,H);path(LEYE,hole);path(REYE,hole);
   cx.save();cx.clip(hole,'evenodd');
   for(const [g,f] of geoms){if(f<.02)continue;
    const p=curve(g.pts);curve(g.crease.slice().reverse(),p,false);p.closePath();
-   cx.save();cx.filter='blur(4px)';cx.fillStyle=cx.strokeStyle=e.hex;cx.globalCompositeOperation='multiply';
-   cx.globalAlpha=(.25+.55*i)*f;cx.fill(p);                                  // párpado móvil
-   cx.globalAlpha=(.18+.3*i)*f;cx.lineWidth=g.W*.09;cx.lineCap='round';cx.stroke(curve(g.crease));  // pliegue más profundo
-   cx.restore();
-   spotXY((g.pts[1][0]+g.crease[2][0])/2,(g.pts[1][1]+g.crease[2][1])/2,g.W*.22,e.hex,(.2+.35*i)*f,'multiply'); // "V" externa
-   if(e.f==='satin'||e.f==='glitter')spotXY(g.pts[4][0]+g.n[0]*g.W*.07,g.pts[4][1]+g.n[1]*g.W*.07,g.W*.2,'#FFFFFF',(.1+.2*i)*f,'screen');
-   if(e.f==='glitter'){cx.save();cx.clip(p);cx.globalCompositeOperation='screen';let r=Math.floor(performance.now()/140)*9301+49297;const rnd=()=>(r=(r*9301+49297)%233280)/233280;
-    for(let n=0;n<14;n++){const k=Math.floor(rnd()*g.pts.length),q=rnd();cx.globalAlpha=(.4+.6*rnd())*f;cx.fillStyle='#FFF4D6';
-     cx.fillRect(g.pts[k][0]+(g.crease[k][0]-g.pts[k][0])*q,g.pts[k][1]+(g.crease[k][1]-g.pts[k][1])*q,2.2,2.2)}cx.restore()}}
+   pigment(p,e.hex,.46*i*f,'soft-light',g.W*.035,hole);
+   pigment(p,e.hex,.24*i*f,'multiply',g.W*.012,hole);
+   cx.save();cx.strokeStyle=e.hex;cx.globalCompositeOperation='multiply';
+   cx.globalAlpha=.15*i*f;cx.lineWidth=g.W*.035;cx.lineCap='round';cx.stroke(curve(g.crease));cx.restore();
+   spotXY((g.pts[1][0]+g.crease[2][0])/2,(g.pts[1][1]+g.crease[2][1])/2,g.W*.16,e.hex,.18*i*f,'multiply');
+   if(e.f==='satin'||e.f==='glitter')spotXY(g.pts[4][0]+g.n[0]*g.W*.07,g.pts[4][1]+g.n[1]*g.W*.07,g.W*.14,'#FFF4E5',.15*i*f,'screen');
+   if(e.f==='glitter'){cx.save();cx.clip(p);cx.globalCompositeOperation='screen';let r=49297;const rnd=()=>(r=(r*9301+49297)%233280)/233280;
+    for(let n=0;n<10;n++){const k=Math.floor(rnd()*g.pts.length),q=rnd(),size=Math.max(.8,g.W*.018);cx.globalAlpha=(.08+.22*rnd())*i*f;cx.fillStyle='#FFF4D6';
+     cx.beginPath();cx.arc(g.pts[k][0]+(g.crease[k][0]-g.pts[k][0])*q,g.pts[k][1]+(g.crease[k][1]-g.pts[k][1])*q,size*.5,0,Math.PI*2);cx.fill()}cx.restore()}}
   cx.restore()}
  if(L.liner){const l=L.liner,i=l.i;for(const [g,f] of geoms){if(f<.02)continue;
   const w=g.W*({thin:.016,classic:.028,wing:.028}[l.f]||.028),up=g.pts.map(q=>[q[0]+g.n[0]*w*.35,q[1]+g.n[1]*w*.35]);
@@ -185,20 +199,20 @@ function draw(v){
    cx.beginPath();cx.moveTo(up[0][0],up[0][1]);cx.lineTo(e[0],e[1]);cx.lineTo(up[1][0]+g.n[0]*w*.6,up[1][1]+g.n[1]*w*.6);cx.lineTo(up[2][0],up[2][1]);cx.closePath();cx.fill()}
   cx.restore()}}
  if(L.lash){const m=L.lash,i=m.i,vol=m.f==='volume',N=vol?26:16;for(const [g,f] of geoms){if(f<.02)continue;
-  cx.save();cx.strokeStyle=m.hex;cx.lineCap='round';cx.lineWidth=vol?1.7:1.25;cx.globalAlpha=Math.min(1,(.55+.4*i)*f);
+  cx.save();cx.strokeStyle=m.hex;cx.lineCap='round';cx.globalAlpha=Math.min(.82,.8*i*f);
   for(let j=0;j<N;j++){const t=j/(N-1),s=t*(g.pts.length-1),k=Math.min(g.pts.length-2,Math.floor(s)),q=s-k;
    const x=g.pts[k][0]+(g.pts[k+1][0]-g.pts[k][0])*q,y=g.pts[k][1]+(g.pts[k+1][1]-g.pts[k][1])*q;
    const lean=.75*(1-t)-.15*t,dx=g.n[0]-g.u[0]*lean,dy=g.n[1]-g.u[1]*lean,dl=Math.hypot(dx,dy)||1;
-   const len=g.W*(vol?.17:.12)*(.55+.45*Math.pow(Math.sin(Math.PI*(.08+.84*t)),.8));
+   const len=g.W*(vol?.14:.105)*(.55+.45*Math.pow(Math.sin(Math.PI*(.08+.84*t)),.8));
+   cx.lineWidth=g.W*(vol?.014:.01)*(.7+.3*Math.sin(Math.PI*t));
    cx.beginPath();cx.moveTo(x,y);cx.quadraticCurveTo(x+dx/dl*len*.55-g.u[0]*len*.15,y+dy/dl*len*.55-g.u[1]*len*.15,x+dx/dl*len,y+dy/dl*len);cx.stroke()}
   cx.restore()}}
  if(L.lips){const l=L.lips,i=l.i,p=new Path2D();path(LIPO,p);path(LIPI,p);
-  cx.save();cx.filter='blur(1.2px)';cx.fillStyle=l.hex;
-  cx.globalCompositeOperation='multiply';cx.globalAlpha=.3+.5*i;cx.fill(p,'evenodd');
-  cx.globalCompositeOperation='color';cx.globalAlpha=.25+.45*i;cx.fill(p,'evenodd');cx.restore();
+  pigment(p,l.hex,.4*i,'soft-light',fw*.003,p,'evenodd');
+  pigment(p,l.hex,.34*i,'multiply',fw*.0015,p,'evenodd');
   cx.save();cx.clip(p,'evenodd');
-  if(l.f==='gloss'){spotY(17,fw*.05,'#FFFFFF',.3+.35*i,'screen',-fw*.012);spotY(0,fw*.045,'#FFFFFF',.15+.2*i,'screen',fw*.01)}
-  else if(l.f==='satin')spotY(17,fw*.06,'#FFFFFF',.1+.12*i,'screen',-fw*.01);
+  if(l.f==='gloss'){spotY(17,fw*.038,'#FFF8F4',.26*i,'screen',-fw*.012);spotY(0,fw*.032,'#FFF8F4',.16*i,'screen',fw*.01)}
+  else if(l.f==='satin')spotY(17,fw*.045,'#FFF4EC',.1*i,'screen',-fw*.01);
   cx.restore()}
 }
 function loop(){
