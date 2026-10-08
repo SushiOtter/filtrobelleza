@@ -1,0 +1,13 @@
+:root{
+  --paper:#F5F5F3;
+  --surface:#FFFFFF;
+  --surface-soft:#F0F0EE;
+  --ink:#151515;
+  --ink-soft:#393939;
+  --muted:#737373;
+  --brand:#C8102E;
+  --brand-dark:#9F0C24;
+  --line:rgba(21,21,21,.14);
+  --sans:'Montserrat',Arial,sans-serif;
+  --ease:cubic-bezier(.2,.7,.2,1);
+}

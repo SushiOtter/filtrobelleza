@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111111">
+<meta name="description" content="Prueba virtual de maquillaje. Descubre combinaciones y tonos para crear tu propio look.">
+<title>Espejo de belleza · Prueba virtual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="css/variables.css"><link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<main id="app">
+
+<section class="screen on" id="welcome">
+  <div class="welcome-brand brand-mark" aria-label="Espejo virtual">ESPEJO<span>VIRTUAL</span></div>
+  <div class="welcome-face" id="welcomeFace"></div>
+  <div class="welcome-copy">
+    <p class="eyebrow">Belleza profesional · Experiencia virtual</p>
+    <h1>Tu belleza.<br>A tu manera.</h1>
+    <p>Descubre cómo podrían quedarte nuestros productos.</p>
+    <button class="btn" data-go="consent">Comenzar</button>
+    <small>Una experiencia de belleza · Sin compromiso</small>
+  </div>
+</section>
+
+<section class="screen" id="consent">
+  <div class="center">
+    <div class="brand-mark" aria-label="Espejo virtual">ESPEJO<span>VIRTUAL</span></div>
+    <p class="eyebrow">Tu privacidad es lo primero</p>
+    <h2>Utilizaremos tu cámara para crear esta experiencia de prueba virtual.</h2>
+    <p>El vídeo se procesa en este dispositivo; no se envía ni se guarda. Solo se guarda una imagen si la descargas. La cámara se apaga al salir.</p>
+    <button class="btn" data-go="scan">Aceptar y continuar</button>
+    <button class="link" data-go="welcome">Ahora no</button>
+  </div>
+</section>
+
+<section class="screen" id="scan">
+  <div class="center">
+    <div class="brand-mark" aria-label="Espejo virtual">ESPEJO<span>VIRTUAL</span></div>
+    <p class="eyebrow">Prueba virtual</p>
+    <h2 id="scanTitle">Coloca tu rostro aquí</h2>
+    <p id="scanSub">Mirando a la cámara</p>
+    <div class="frame"><video id="vScan" muted playsinline></video><i class="sweep"></i></div>
+    <button class="btn" id="scanRetry" hidden>Reintentar cámara</button>
+    <button class="link" data-go="welcome">Cancelar</button>
+    <ul class="checks">
+      <li data-i="0">Rostro detectado</li><li data-i="1">Iluminación adecuada</li><li data-i="2">Posición correcta</li>
+    </ul>
+  </div>
+</section>
+
+<section class="screen" id="mirror">
+  <header class="top">
+    <div class="top-start">
+      <button class="link" data-go="welcome" aria-label="Volver">← Atrás</button>
+      <div class="brand-mark" aria-label="Espejo virtual">ESPEJO<span>VIRTUAL</span></div>
+    </div>
+    <nav aria-label="Herramientas"><button id="btnLook" aria-pressed="false">Mi look</button><button id="btnCompare" aria-pressed="false">Comparar</button><button id="btnSave">Guardar</button><button id="btnCal" hidden>Calibrar</button></nav>
+  </header>
+
+  <div class="stage" id="stage">
+    <div class="layer" id="before"><div class="mir"><canvas id="cvB"></canvas></div></div>
+    <div class="layer" id="after"><div class="mir"><canvas id="cv"></canvas></div></div>
+    <div class="divider" id="divider" role="slider" tabindex="0" aria-label="Comparar antes y después" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span>←  →</span></div>
+    <div class="hint" id="hint"></div>
+    <div class="tag" id="tag">Elige un producto para empezar.</div>
+    <div class="ba"><button data-ba="100">Antes</button><button data-ba="0">Después</button></div>
+  </div>
+
+  <aside class="look" id="lookPanel">
+    <h3>Mi look</h3><ul id="lookList"></ul>
+    <div id="recs"></div>
+    <div class="looks" id="looksRow"></div>
+  </aside>
+
+  <footer class="dock">
+    <div class="shades" id="shades"></div>
+    <div class="fin" id="fin"></div>
+    <div class="intensity"><span>Sutil</span><input type="range" id="intensity" min="0" max="100" value="60" aria-label="Intensidad"><span>Intensa</span></div>
+    <p class="catalog-note">Catálogo de demostración · Productos, precios y ubicación ficticios</p>
+    <div class="products" id="products"></div>
+    <nav class="cats" id="cats" aria-label="Categorías de maquillaje"></nav>
+  </footer>
+</section>
+
+<div class="modal" id="storeModal"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="storeTitle">
+  <h3 id="storeTitle">Ubicación de ejemplo</h3><div id="storeBody"></div>
+  <button class="link" id="closeModal">Cerrar</button>
+</div></div>
+
+<section class="screen" id="save">
+  <div class="center">
+    <div class="brand-mark" aria-label="Espejo virtual">ESPEJO<span>VIRTUAL</span></div>
+    <p class="eyebrow">Tu selección</p>
+    <h2>Tu look, listo para guardar</h2>
+    <div class="export-preview">
+      <img id="lookPreview" alt="Vista previa del look creado" hidden>
+      <p id="previewPlaceholder">La vista previa de tu look aparecerá aquí.</p>
+    </div>
+    <p id="exportStatus" role="status">La imagen se prepara en este dispositivo. No se envía a ningún servidor.</p>
+    <button class="btn" id="downloadLook" disabled>Descargar imagen</button>
+    <button class="btn" id="finish">Terminar</button>
+    <button class="link" data-go="scan">Seguir probando</button>
+  </div>
+</section>
+</main>
+<video id="vMain" muted playsinline style="position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none"></video>
+<script type="module" src="js/main.js"></script>
+</body></html>
