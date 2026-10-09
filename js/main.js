@@ -7,11 +7,29 @@ const MODEL="https://storage.googleapis.com/mediapipe-models/face_landmarker/fac
 const SEGMODEL="https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite";
 const FACE_SKIN=3,BODY_SKIN=2;
 const S={cat:'base',look:{}};let landmarker=null,segmenter=null,stream=null,LM=null,cur=0,done=false,okSince=0;
-let segData=null,segW=0,segH=0,skinReady=false,lastSegAt=0,skinLum=132;
+let segData=null,segW=0,segH=0,skinReady=false,lastSegAt=0,skinLum=132,segUnavailable=false,segVersion=0,segBuiltV=-1;
 let cameraEpoch=0,exportUrl=null;
 const findProd=id=>Object.values(CATALOG).flat().find(p=>p.id===id);
 const activeLook=()=>{const o={};for(const k in S.look)if(S.look[k].on)o[k]=S.look[k];return o};
 const pos=v=>{$('#stage').style.setProperty('--pos',v+'%');$('#divider').setAttribute('aria-valuenow',Math.round(v))};
+
+/* ---------- Calidad adaptativa: evita tirones en móvil y equipos lentos ---------- */
+const IS_MOBILE=matchMedia('(pointer:coarse)').matches||/Android|iPhone|iPad|iPod|Mobile|Silk/i.test(navigator.userAgent);
+const Q={level:2,dpr:2,smooth:true,seg:true,segEvery:140,detEvery:33,renderEvery:0,passes:1,auto:true,cpu:false};
+function setLevel(l){l=Math.max(0,Math.min(2,l));Q.level=l;
+ Q.dpr=l>=2?2:l===1?1.5:1.25;Q.smooth=l>=2;Q.seg=l>=1;
+ Q.segEvery=l>=2?200:l===1?300:99999;Q.detEvery=l>=2?33:l===1?50:66;
+ Q.renderEvery=l>=2?0:l===1?33:50;Q.passes=l>=2?1:l===1?.85:.62;
+ if(!Q.seg&&segmenter){try{segmenter.close()}catch(e){}segmenter=null;segData=null;skinReady=false}}
+const DEFAULT_LEVEL=()=>Q.cpu?0:LOW_END?0:IS_MOBILE?1:2;
+const LOW_END=IS_MOBILE&&((navigator.hardwareConcurrency||8)<=2||(navigator.deviceMemory||8)<=2);
+const QUALITY={mode:'auto'};
+function qualityLabel(){return QUALITY.mode==='high'?'Alta':QUALITY.mode==='fluid'?'Fluida':'Automática'}
+function setMode(m){QUALITY.mode=m;Q.auto=m==='auto';
+ if(m==='high')setLevel(Q.cpu?0:2);else if(m==='fluid')setLevel(0);else setLevel(DEFAULT_LEVEL());
+ const b=$('#btnQuality');if(b){b.textContent='Calidad: '+qualityLabel();b.classList.toggle('act',m!=='auto')}
+ if(Q.seg&&!segmenter&&!segUnavailable&&stream)startCamera()}
+setLevel(DEFAULT_LEVEL());
 
 /* ---------- Cámara + detección (todo en el dispositivo, nada se sube ni se guarda) ---------- */
 async function startCamera(){
@@ -21,7 +39,7 @@ async function startCamera(){
   $('#scanTitle').textContent='Preparando la cámara';
   $('#scanSub').textContent='Acepta el permiso del navegador para continuar.';
   if(!navigator.mediaDevices?.getUserMedia){const error=new Error('UNSUPPORTED');error.name='UNSUPPORTED';throw error}
-  if(!stream){const candidate=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'user'},width:{ideal:1280},height:{ideal:720}},audio:false});
+  if(!stream){const candidate=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'user'},width:{ideal:IS_MOBILE?960:1280},height:{ideal:IS_MOBILE?540:720}},audio:false});
    if(epoch!==cameraEpoch){candidate.getTracks().forEach(t=>t.stop());return}stream=candidate}
   $$('video').forEach(video=>{video.pause();video.srcObject=stream});
   for(const track of stream.getVideoTracks())track.addEventListener('ended',()=>{
@@ -35,7 +53,7 @@ async function startCamera(){
   if(epoch!==cameraEpoch)return;
   $('#scanTitle').textContent='Coloca tu rostro aquí';
   $('#scanSub').textContent='Mirando a la cámara';
-  if(!landmarker||!segmenter){
+  if(!landmarker||(Q.seg&&!segmenter&&!segUnavailable)){
    const {FaceLandmarker,ImageSegmenter,FilesetResolver}=await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs");
    if(epoch!==cameraEpoch)return;
    const fs=await FilesetResolver.forVisionTasks(WASM);
@@ -45,19 +63,18 @@ async function startCamera(){
     const options={baseOptions:{modelAssetPath:MODEL,delegate:'GPU'},runningMode:'VIDEO',numFaces:1,minFaceDetectionConfidence:.45,minFacePresenceConfidence:.45,minTrackingConfidence:.45};
     let detector;
     try{detector=await FaceLandmarker.createFromOptions(fs,options)}
-    catch(gpuError){if(epoch!==cameraEpoch)return;detector=await FaceLandmarker.createFromOptions(fs,{...options,baseOptions:{modelAssetPath:MODEL,delegate:'CPU'}})}
+    catch(gpuError){if(epoch!==cameraEpoch)return;detector=await FaceLandmarker.createFromOptions(fs,{...options,baseOptions:{modelAssetPath:MODEL,delegate:'CPU'}});Q.cpu=true}
     if(epoch!==cameraEpoch){detector.close();return}
     landmarker=detector;
+    if(Q.cpu){if(Q.auto){setLevel(0);Q.detEvery=90;Q.renderEvery=66}console.warn('Detección facial en CPU: se reduce la calidad para mantener la fluidez.')}
    }
-   if(!segmenter){
+   if(Q.seg&&!segmenter&&!segUnavailable){
     try{
      const segOptions={baseOptions:{modelAssetPath:SEGMODEL,delegate:'GPU'},runningMode:'VIDEO',outputCategoryMask:true,outputConfidenceMasks:false};
-     let seg;
-     try{seg=await ImageSegmenter.createFromOptions(fs,segOptions)}
-     catch(gpuError){if(epoch!==cameraEpoch)return;seg=await ImageSegmenter.createFromOptions(fs,{...segOptions,baseOptions:{modelAssetPath:SEGMODEL,delegate:'CPU'}})}
+     const seg=await ImageSegmenter.createFromOptions(fs,segOptions);
      if(epoch!==cameraEpoch){seg.close();return}
-     segmenter=seg;skinReady=false;
-    }catch(err){segmenter=null;skinReady=false;console.warn('Segmentación facial no disponible; se usará el óvalo facial como máscara.',err)}
+     segmenter=seg;skinReady=false;Q.seg=true;
+    }catch(err){segmenter=null;skinReady=false;Q.seg=false;segUnavailable=true;console.warn('Segmentación facial no disponible; se usará el óvalo facial como máscara.',err)}
    }
   }
   if(epoch!==cameraEpoch)return;
@@ -82,7 +99,7 @@ function stopCamera(){
  LM=null;SM=null;lostAt=0;last=-1;
  if(landmarker){landmarker.close();landmarker=null}
  if(segmenter){segmenter.close();segmenter=null}
- segData=null;skinReady=false;lastSegAt=0;
+ segData=null;skinReady=false;lastSegAt=0;segUnavailable=false;
 }
 const bc=document.createElement('canvas');bc.width=bc.height=24;const bx=bc.getContext('2d',{willReadFrequently:true});
 function scanStep(v){
@@ -133,10 +150,10 @@ function detect(v){ // con poca luz se aclara la imagen antes de detectar
   return landmarker.detectForVideo(src,ts).faceLandmarks[0]||null}
 function segStep(v){
  if(!segmenter||!v.videoWidth)return;
- const now=performance.now();if(now-lastSegAt<60)return;lastSegAt=now;
+ const now=performance.now();if(!Q.seg||now-lastSegAt<Q.segEvery)return;lastSegAt=now;
  try{
   const res=segmenter.segmentForVideo(v,now);
-  if(res.categoryMask){const a=res.categoryMask.getAsUint8Array();segData=a.slice();segW=res.categoryMask.width;segH=res.categoryMask.height;res.categoryMask.close();skinReady=true}
+  if(res.categoryMask){const a=res.categoryMask.getAsUint8Array();segData=a.slice();segW=res.categoryMask.width;segH=res.categoryMask.height;res.categoryMask.close();skinReady=true;segVersion++}
   if(res.confidenceMasks)res.confidenceMasks.forEach(m=>m.close());
  }catch(err){try{segmenter&&segmenter.close()}catch(e){}segmenter=null;segData=null;skinReady=false;console.error('Error en la segmentación facial:',err)}
 }
@@ -160,13 +177,16 @@ const curve=(a,p=new Path2D(),move=true)=>{move?p.moveTo(a[0][0],a[0][1]):p.line
 const cl=x=>Math.max(0,Math.min(1,x));
 
 function draw(v){
- const st=$('#stage'),W=st.clientWidth,H=st.clientHeight,dpr=devicePixelRatio||1;
- for(const c of [cv,cvB,pigmentCanvas])if(c.width!==Math.round(W*dpr)||c.height!==Math.round(H*dpr)){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr)}
- for(const c of [cx,cxB]){c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,W,H)}
+ const st=$('#stage'),W=st.clientWidth,H=st.clientHeight,cmp=st.classList.contains('cmp');
+ const ppMax=IS_MOBILE?1.6e6:2.6e6,dpr=Math.max(1,Math.min(devicePixelRatio||1,Q.dpr,Math.sqrt(ppMax/Math.max(1,W*H))));
+ for(const c of [cv,cvB])if(c.width!==Math.round(W*dpr)||c.height!==Math.round(H*dpr)){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr)}
+ cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,W,H);
+ if(cmp){cxB.setTransform(dpr,0,0,dpr,0,0);cxB.clearRect(0,0,W,H)}
  if(!v.videoWidth)return;
  const vw=v.videoWidth,vh=v.videoHeight,sc=Math.max(W/vw,H/vh),ox=(W-vw*sc)/2,oy=(H-vh*sc)/2;
- const f0=ENV.dark?'brightness(1.6) contrast(1.1)':'none';cxB.filter=cx.filter=f0;
- cxB.drawImage(v,ox,oy,vw*sc,vh*sc);cx.drawImage(v,ox,oy,vw*sc,vh*sc);cxB.filter=cx.filter='none';
+ const f0=ENV.dark?'brightness(1.6) contrast(1.1)':'none';cx.filter=f0;
+ cx.drawImage(v,ox,oy,vw*sc,vh*sc);cx.filter='none';
+ if(cmp){cxB.filter=f0;cxB.drawImage(v,ox,oy,vw*sc,vh*sc);cxB.filter='none'}
  const L0=activeLook();
  if(!LM){hint(Object.keys(L0).length?'No vemos tu rostro. Mira a la cámara.':'');return}
  const yaw=(()=>{const dl=LM[1].x-LM[234].x,dr=LM[454].x-LM[1].x;return(dl-dr)/((dl+dr)||1)})();
@@ -180,15 +200,18 @@ function draw(v){
  const facePoints=OVAL.map(P),faceBounds=facePoints.reduce((b,p)=>({left:Math.min(b.left,p[0]),top:Math.min(b.top,p[1]),right:Math.max(b.right,p[0]),bottom:Math.max(b.bottom,p[1])}),{left:W,top:H,right:0,bottom:0});
  const pad=fw*.04,x0=Math.max(0,faceBounds.left-pad),y0=Math.max(0,faceBounds.top-pad),x1=Math.min(W,faceBounds.right+pad),y1=Math.min(H,faceBounds.bottom+pad);
  const outW=Math.max(1,Math.ceil((x1-x0)*dpr)),outH=Math.max(1,Math.ceil((y1-y0)*dpr));
-  if(pigmentCanvas.width!==outW||pigmentCanvas.height!==outH){pigmentCanvas.width=outW;pigmentCanvas.height=outH}
+ const pcW=Math.max(16,Math.ceil(outW/16)*16),pcH=Math.max(16,Math.ceil(outH/16)*16);
+  if(pigmentCanvas.width!==pcW||pigmentCanvas.height!==pcH){pigmentCanvas.width=pcW;pigmentCanvas.height=pcH}
   /* máscara de piel real (segmentación multiclase) para que el maquillaje no invada pelo ni fondo */
   const hasSkin=skinReady&&segData&&segW&&segH;
   if(hasSkin){
-   if(skinCanvas.width!==outW||skinCanvas.height!==outH){skinCanvas.width=outW;skinCanvas.height=outH}
-   if(segCanvas.width!==segW||segCanvas.height!==segH){segCanvas.width=segW;segCanvas.height=segH}
-   const img=segCtx.createImageData(segW,segH),sd=img.data;
-   for(let i=0;i<segW*segH;i++){const c=segData[i],k=i*4,on=(c===FACE_SKIN||c===BODY_SKIN);sd[k]=255;sd[k+1]=255;sd[k+2]=255;sd[k+3]=on?255:0}
-   segCtx.putImageData(img,0,0);
+   if(skinCanvas.width!==pcW||skinCanvas.height!==pcH){skinCanvas.width=pcW;skinCanvas.height=pcH}
+   if(segBuiltV!==segVersion){
+    if(segCanvas.width!==segW||segCanvas.height!==segH){segCanvas.width=segW;segCanvas.height=segH}
+    const img=segCtx.createImageData(segW,segH),sd=img.data;
+    for(let i=0;i<segW*segH;i++){const c=segData[i],k=i*4,on=(c===FACE_SKIN||c===BODY_SKIN);sd[k]=255;sd[k+1]=255;sd[k+2]=255;sd[k+3]=on?255:0}
+    segCtx.putImageData(img,0,0);segBuiltV=segVersion;
+   }
    skinCtx.setTransform(1,0,0,1,0,0);skinCtx.clearRect(0,0,skinCanvas.width,skinCanvas.height);
    skinCtx.setTransform(dpr,0,0,dpr,-x0*dpr,-y0*dpr);
    skinCtx.save();skinCtx.filter=`blur(${Math.max(1.5,fw*.009)}px)`;skinCtx.drawImage(segCanvas,ox,oy,vw*sc,vh*sc);skinCtx.restore();
@@ -198,18 +221,18 @@ function draw(v){
   /* pigmento con borde suavizado: rellena la forma y difumina su alpha (sin recortes duros) */
   const pigment=(shape,hex,alpha,blend,feather=0,rule='nonzero',skinOnly=false)=>{
    if(alpha<=.002)return;
-   pigmentCtx.setTransform(1,0,0,1,0,0);pigmentCtx.clearRect(0,0,outW,outH);
+   pigmentCtx.setTransform(1,0,0,1,0,0);pigmentCtx.clearRect(0,0,pcW,pcH);
    pigmentCtx.setTransform(dpr,0,0,dpr,-x0*dpr,-y0*dpr);
    pigmentCtx.save();pigmentCtx.fillStyle=hex;pigmentCtx.fill(shape,rule);pigmentCtx.restore();
    if(feather>0){pigmentCtx.save();pigmentCtx.globalCompositeOperation='destination-in';pigmentCtx.filter=`blur(${feather}px)`;pigmentCtx.fillStyle='#000';pigmentCtx.fill(shape,rule);pigmentCtx.restore()}
    if(skinOnly&&hasSkin)skinOnlyLayer();
-   cx.save();cx.globalCompositeOperation=blend;cx.globalAlpha=Math.min(1,Math.max(0,alpha));cx.drawImage(pigmentCanvas,x0,y0,x1-x0,y1-y0);cx.restore();
+   cx.save();cx.globalCompositeOperation=blend;cx.globalAlpha=Math.min(1,Math.max(0,alpha));cx.drawImage(pigmentCanvas,x0,y0,pcW/dpr,pcH/dpr);cx.restore();
   };
   /* mancha elíptica degradada compuesta en una capa, opcionalmente restringida a la piel */
   const blob=(x,y,rx,ry,rot,hex,alpha,blend,skinOnly=true)=>{
    if(alpha<=.002)return;
    const R=Math.max(rx,ry),bxp=Math.max(0,Math.floor(x-R-x0)),byp=Math.max(0,Math.floor(y-R-y0));
-   const bwp=Math.min(outW-bxp,Math.ceil(2*R)+2),bhp=Math.min(outH-byp,Math.ceil(2*R)+2);
+   const bwp=Math.min(pcW-bxp,Math.ceil(2*R)+2),bhp=Math.min(pcH-byp,Math.ceil(2*R)+2);
    if(bwp<=0||bhp<=0)return;
    pigmentCtx.setTransform(1,0,0,1,0,0);pigmentCtx.clearRect(bxp,byp,bwp,bhp);
    pigmentCtx.setTransform(dpr,0,0,dpr,-x0*dpr,-y0*dpr);
@@ -220,18 +243,18 @@ function draw(v){
    cx.save();cx.globalCompositeOperation=blend;cx.globalAlpha=Math.min(1,Math.max(0,alpha));cx.drawImage(pigmentCanvas,bxp,byp,bwp,bhp,x0+bxp/dpr,y0+byp/dpr,bwp/dpr,bhp/dpr);cx.restore();
   };
  /* pinta trazos (delineador) en una capa aparte y la compone una sola vez para evitar costuras */
- const strokeLayer=(drawFn,alpha)=>{pigmentCtx.setTransform(1,0,0,1,0,0);pigmentCtx.clearRect(0,0,outW,outH);
+ const strokeLayer=(drawFn,alpha)=>{pigmentCtx.setTransform(1,0,0,1,0,0);pigmentCtx.clearRect(0,0,pcW,pcH);
   pigmentCtx.setTransform(dpr,0,0,dpr,-x0*dpr,-y0*dpr);drawFn(pigmentCtx);
-  cx.save();cx.globalAlpha=Math.min(1,Math.max(0,alpha));cx.drawImage(pigmentCanvas,x0,y0,x1-x0,y1-y0);cx.restore()};
+  cx.save();cx.globalAlpha=Math.min(1,Math.max(0,alpha));cx.drawImage(pigmentCanvas,x0,y0,pcW/dpr,pcH/dpr);cx.restore()};
  /* suaviza la piel bajo la base conservando el detalle de ojos, cejas y labios */
  const smoothSkin=(shape,feather,alpha,rule)=>{if(alpha<=.002)return;
-  pigmentCtx.setTransform(1,0,0,1,0,0);pigmentCtx.clearRect(0,0,outW,outH);
+  pigmentCtx.setTransform(1,0,0,1,0,0);pigmentCtx.clearRect(0,0,pcW,pcH);
   pigmentCtx.setTransform(dpr,0,0,dpr,-x0*dpr,-y0*dpr);
   pigmentCtx.fillStyle='#fff';pigmentCtx.fill(shape,rule);
   pigmentCtx.save();pigmentCtx.globalCompositeOperation='destination-in';pigmentCtx.filter=`blur(${feather}px)`;pigmentCtx.fillStyle='#fff';pigmentCtx.fill(shape,rule);pigmentCtx.restore();
   pigmentCtx.save();pigmentCtx.globalCompositeOperation='source-in';pigmentCtx.filter=`blur(${Math.max(3,fw*.022)}px)`;pigmentCtx.drawImage(cx,0,0,W,H);pigmentCtx.restore();
   if(hasSkin)skinOnlyLayer();
-  cx.save();cx.globalAlpha=alpha;cx.drawImage(pigmentCanvas,x0,y0,x1-x0,y1-y0);cx.restore()};
+  cx.save();cx.globalAlpha=alpha;cx.drawImage(pigmentCanvas,x0,y0,pcW/dpr,pcH/dpr);cx.restore()};
  const spotXY=(x,y,r,hex,a,mode)=>{const g=cx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,hex);g.addColorStop(.6,hex+'B0');g.addColorStop(1,hex+'00');
   cx.save();cx.globalCompositeOperation=mode;cx.globalAlpha=Math.min(1,Math.max(0,a));cx.fillStyle=g;cx.beginPath();cx.arc(x,y,r,0,7);cx.fill();cx.restore()};
  const spotY=(i,r,hex,a,mode,dy)=>{const [x,y]=P(i);spotXY(x,y+dy,r,hex,a,mode)};
@@ -240,51 +263,51 @@ function draw(v){
  const roll=Math.atan2(P(263)[1]-P(33)[1],P(263)[0]-P(33)[0]);
 
  if(L.base){const b=L.base,i=b.i,delta=(lumHex(b.hex)-skinLum)/255;
-  smoothSkin(faceMask,fw*.024,.3*i,'evenodd');
+  if(Q.smooth)smoothSkin(faceMask,fw*.024,.3*i,'evenodd');
   pigment(faceMask,b.hex,.48*i,'color',fw*.03,'evenodd',true);
-  pigment(faceMask,b.hex,.26*i,'soft-light',fw*.032,'evenodd',true);
+  if(Q.passes>=.8)pigment(faceMask,b.hex,.26*i,'soft-light',fw*.032,'evenodd',true);
   if(delta<-.015)pigment(faceMask,b.hex,Math.min(.55,.16-delta*.9)*i,'multiply',fw*.02,'evenodd',true);
   else if(delta>.015)pigment(faceMask,b.hex,Math.min(.45,.12+delta*.8)*i,'screen',fw*.02,'evenodd',true);
-  else pigment(faceMask,b.hex,.14*i,'multiply',fw*.02,'evenodd',true);
-  if(b.f==='glow')[[151,.075],[205,.085],[425,.085],[168,.05]].forEach(([k,r])=>{const [x,y]=P(k);blob(x,y,fw*r,fw*r*.6,roll,'#FFF6E8',.2*i,'screen')})}
+  else if(Q.passes>=.8)pigment(faceMask,b.hex,.14*i,'multiply',fw*.02,'evenodd',true);
+  if(b.f==='glow'&&Q.level>=2)[[151,.075],[205,.085],[425,.085],[168,.05]].forEach(([k,r])=>{const [x,y]=P(k);blob(x,y,fw*r,fw*r*.6,roll,'#FFF6E8',.2*i,'screen')})}
  if(L.blush){const b=L.blush
   ;[[205,-1,fL],[425,1,fR]].forEach(([i,s,f])=>{if(f<.02)return;const [x,y]=P(i),nx=x-P(1)[0],ny=y-P(1)[1],nl=Math.hypot(nx,ny)||1;
    const px=x+nx/nl*fw*.02,py=y+ny/nl*fw*.02,rot=roll+s*.28;
    blob(px,py,fw*.135,fw*.092,rot,b.hex,.34*b.i*f,'color');
-   blob(px,py,fw*.135,fw*.092,rot,b.hex,.22*b.i*f,'soft-light');
-   blob(x,y,fw*.07,fw*.05,rot,b.hex,.18*b.i*f,'multiply');
-   if(b.f==='satin')blob(px-nx/nl*fw*.03,py-fw*.02,fw*.06,fw*.035,rot,'#FFF4EC',.1*b.i*f,'screen')
+   if(Q.passes>=.8)blob(px,py,fw*.135,fw*.092,rot,b.hex,.22*b.i*f,'soft-light');
+   if(Q.level>=2)blob(x,y,fw*.07,fw*.05,rot,b.hex,.18*b.i*f,'multiply');
+   if(b.f==='satin'&&Q.level>=2)blob(px-nx/nl*fw*.03,py-fw*.02,fw*.06,fw*.035,rot,'#FFF4EC',.1*b.i*f,'screen')
   })}
  if(L.contour){const k=L.contour,i=k.i
   ;[[234,205,-1],[454,425,1]].forEach(([ear,cheek,s])=>{const f=s<0?fL:fR;if(f<.02)return;
    const [ex,ey]=P(ear),[bx,by]=P(cheek),mx=(ex+bx)/2,my=(ey+by)/2+fw*.05,rot=roll+s*.32;
    blob(mx,my,fw*.14,fw*.08,rot,k.hex,.3*k.i*f,'multiply');
-   blob(mx,my,fw*.09,fw*.05,rot,k.hex,.16*k.i*f,'multiply')
+   if(Q.level>=2)blob(mx,my,fw*.09,fw*.05,rot,k.hex,.16*k.i*f,'multiply')
   });
-  if(k.f==='defined')[136,150,149,176,148,152,365,379,378,400,377,397].forEach(idx=>{const [x,y]=P(idx),nx=P(1)[0]-x,ny=P(1)[1]-y,nl=Math.hypot(nx,ny)||1;
+  if(k.f==='defined'&&Q.level>=2)[136,150,149,176,148,152,365,379,378,400,377,397].forEach(idx=>{const [x,y]=P(idx),nx=P(1)[0]-x,ny=P(1)[1]-y,nl=Math.hypot(nx,ny)||1;
    blob(x+nx/nl*fw*.035,y+ny/nl*fw*.02,fw*.075,fw*.05,Math.atan2(ny,nx),k.hex,.18*k.i*F,'multiply')})}
  if(L.glow){const g=L.glow;[[117,fL],[346,fR]].forEach(([i,f])=>{if(f<.02)return;const [x,y]=P(i),nx=x-P(1)[0],ny=y-P(1)[1],nl=Math.hypot(nx,ny)||1;
    blob(x+nx/nl*fw*.015,y-fw*.01,fw*.09,fw*.045,roll,g.hex,.32*g.i*f,'screen');
-   blob(x+nx/nl*fw*.015,y-fw*.01,fw*.045,fw*.03,roll,'#FFFDF6',.12*g.i*f,'screen')
+   if(Q.level>=2)blob(x+nx/nl*fw*.015,y-fw*.01,fw*.045,fw*.03,roll,'#FFFDF6',.12*g.i*f,'screen')
   });
   blob(P(168)[0],P(168)[1],fw*.035,fw*.03,roll,g.hex,.2*g.i*F,'screen');
-  for(const [gp,f] of geoms){if(f<.02)continue;const ip=gp.pts[gp.pts.length-1];spotXY(ip[0],ip[1],fw*.02,'#FFFDF4',.14*g.i*f,'screen')}}
+  if(Q.level>=2)for(const [gp,f] of geoms){if(f<.02)continue;const ip=gp.pts[gp.pts.length-1];spotXY(ip[0],ip[1],fw*.02,'#FFFDF4',.14*g.i*f,'screen')}}
  if(L.brow){const b=L.brow,i=b.i,def=b.f==='defined';[[LBROW,fL],[RBROW,fR]].forEach(([idx,f])=>{if(f<.02)return;const p=path(idx);
   pigment(p,b.hex,(.32*i+(def?.08*i:0))*f,'multiply',fw*.004);
-  pigment(p,b.hex,.18*i*f,'soft-light',fw*.003)
+  if(Q.passes>=.8)pigment(p,b.hex,.18*i*f,'soft-light',fw*.003)
  })}
- if(L.eyes){const e=L.eyes,i=e.i;
+ if(L.eyes){const e=L.eyes,i=e.i,hi=Q.level>=2;
   for(const [g,f] of geoms){if(f<.02)continue;
    const p=curve(g.pts);curve(g.crease.slice().reverse(),p,false);p.closePath();
    pigment(p,e.hex,.5*i*f,'soft-light',g.W*.03);
-   pigment(p,e.hex,.26*i*f,'multiply',g.W*.012);
-   pigment(p,e.hex,.16*i*f,'color',g.W*.018);
-   for(let s=0;s<5;s++){const q=s/4,idx=Math.round(q*(g.pts.length-1)),pp=g.pts[idx],cp=g.crease[idx],gx=(pp[0]+cp[0])/2,gy=(pp[1]+cp[1])/2;
+   if(Q.passes>=.8)pigment(p,e.hex,.26*i*f,'multiply',g.W*.012);
+   if(hi)pigment(p,e.hex,.16*i*f,'color',g.W*.018);
+   if(hi)for(let s=0;s<5;s++){const q=s/4,idx=Math.round(q*(g.pts.length-1)),pp=g.pts[idx],cp=g.crease[idx],gx=(pp[0]+cp[0])/2,gy=(pp[1]+cp[1])/2;
     spotXY(gx,gy,g.W*(.17-.07*q),e.hex,(.2-.12*q)*i*f,'multiply')}
-   cx.save();cx.strokeStyle=e.hex;cx.globalCompositeOperation='multiply';cx.globalAlpha=.16*i*f;cx.lineWidth=g.W*.03;cx.lineCap='round';cx.stroke(curve(g.crease));cx.restore();
-   const oc=g.pts[0];spotXY(oc[0],oc[1]-g.W*.02,g.W*.2,e.hex,.22*i*f,'multiply');
-   const ic=g.pts[g.pts.length-1];spotXY(ic[0],ic[1],g.W*.1,'#FFF6EA',.16*i*f,'screen');
-   if(e.f==='satin'||e.f==='glitter')spotXY(g.pts[4][0]+g.n[0]*g.W*.07,g.pts[4][1]+g.n[1]*g.W*.07,g.W*.14,'#FFF4E5',.15*i*f,'screen');
+   if(hi){cx.save();cx.strokeStyle=e.hex;cx.globalCompositeOperation='multiply';cx.globalAlpha=.16*i*f;cx.lineWidth=g.W*.03;cx.lineCap='round';cx.stroke(curve(g.crease));cx.restore();
+    const oc=g.pts[0];spotXY(oc[0],oc[1]-g.W*.02,g.W*.2,e.hex,.22*i*f,'multiply');
+    const ic=g.pts[g.pts.length-1];spotXY(ic[0],ic[1],g.W*.1,'#FFF6EA',.16*i*f,'screen');
+    if(e.f==='satin'||e.f==='glitter')spotXY(g.pts[4][0]+g.n[0]*g.W*.07,g.pts[4][1]+g.n[1]*g.W*.07,g.W*.14,'#FFF4E5',.15*i*f,'screen')}
    if(e.f==='glitter'){cx.save();cx.clip(p);cx.globalCompositeOperation='screen';let r=49297;const rnd=()=>(r=(r*9301+49297)%233280)/233280;
     for(let n=0;n<10;n++){const k=Math.floor(rnd()*g.pts.length),q=rnd(),size=Math.max(.8,g.W*.018);cx.globalAlpha=(.08+.22*rnd())*i*f;cx.fillStyle='#FFF4D6';
      cx.beginPath();cx.arc(g.pts[k][0]+(g.crease[k][0]-g.pts[k][0])*q,g.pts[k][1]+(g.crease[k][1]-g.pts[k][1])*q,size*.5,0,Math.PI*2);cx.fill()}cx.restore()}
@@ -307,36 +330,50 @@ function draw(v){
    cx.lineWidth=g.W*(vol?.014:.01)*(.7+.3*Math.sin(Math.PI*t));
    cx.beginPath();cx.moveTo(x,y);cx.quadraticCurveTo(x+dx/dl*len*.55-g.u[0]*len*.15,y+dy/dl*len*.55-g.u[1]*len*.15,x+dx/dl*len,y+dy/dl*len);cx.stroke()}
   cx.restore()}}
- if(L.lips){const l=L.lips,i=l.i,p=new Path2D();path(LIPO,p);path(LIPI,p);
+ if(L.lips){const l=L.lips,i=l.i,hi=Q.level>=2,p=new Path2D();path(LIPO,p);path(LIPI,p);
   pigment(p,l.hex,.42*i,'color',fw*.012,'evenodd');
   pigment(p,l.hex,.3*i,'multiply',fw*.01,'evenodd');
-  pigment(p,l.hex,.2*i,'soft-light',fw*.014,'evenodd');
-  cx.save();cx.strokeStyle=l.hex;cx.globalCompositeOperation='multiply';cx.globalAlpha=.28*i;cx.lineWidth=Math.max(1,fw*.01);cx.lineJoin='round';cx.stroke(p);cx.restore();
+  if(Q.passes>=.8)pigment(p,l.hex,.2*i,'soft-light',fw*.014,'evenodd');
+  if(hi){cx.save();cx.strokeStyle=l.hex;cx.globalCompositeOperation='multiply';cx.globalAlpha=.28*i;cx.lineWidth=Math.max(1,fw*.01);cx.lineJoin='round';cx.stroke(p);cx.restore()}
   cx.save();cx.clip(p,'evenodd');
-  spotXY((P(13)[0]+P(14)[0])/2,(P(13)[1]+P(14)[1])/2,fw*.03,'#2A0E12',.22*i,'multiply');
-  if(l.f==='gloss'){spotY(17,fw*.038,'#FFF8F4',.26*i,'screen',-fw*.012);spotY(0,fw*.032,'#FFF8F4',.16*i,'screen',fw*.01);spotXY(P(0)[0],P(0)[1]-fw*.02,fw*.02,'#FFFFFF',.18*i,'screen')}
-  else if(l.f==='satin'){spotY(17,fw*.045,'#FFF4EC',.1*i,'screen',-fw*.01);spotXY(P(0)[0],P(0)[1]-fw*.018,fw*.016,'#FFFFFF',.1*i,'screen')}
+  if(hi){spotXY((P(13)[0]+P(14)[0])/2,(P(13)[1]+P(14)[1])/2,fw*.03,'#2A0E12',.22*i,'multiply');
+   if(l.f==='gloss'){spotY(17,fw*.038,'#FFF8F4',.26*i,'screen',-fw*.012);spotY(0,fw*.032,'#FFF8F4',.16*i,'screen',fw*.01);spotXY(P(0)[0],P(0)[1]-fw*.02,fw*.02,'#FFFFFF',.18*i,'screen')}
+   else if(l.f==='satin'){spotY(17,fw*.045,'#FFF4EC',.1*i,'screen',-fw*.01);spotXY(P(0)[0],P(0)[1]-fw*.018,fw*.016,'#FFFFFF',.1*i,'screen')}}
   cx.restore()}
 }
+let last=-1,lastDetectAt=0,lastDrawAt=0,lastDrawn=-1,workSum=0,workN=0;
 function loop(){
+ const now=performance.now();
  const onScan=$('#scan').classList.contains('on'),onMir=$('#mirror').classList.contains('on');
- if(onScan||onMir){const v=onScan?$('#vScan'):$('#vMain');
-  if(v.readyState>=2){sense(v);
-   if(landmarker&&v.currentTime!==last&&performance.now()-lastDetectAt>=33){
-    last=v.currentTime;lastDetectAt=performance.now();
+ if(onScan||onMir){
+  const v=onScan?$('#vScan'):$('#vMain');
+  if(v.readyState>=2){
+   const t0=performance.now();
+   sense(v);
+   if(landmarker&&v.currentTime!==last&&now-lastDetectAt>=Q.detEvery){
+    last=v.currentTime;lastDetectAt=now;
     try{LM=smooth(detect(v))}
     catch(err){LM=null;hint('La detección facial se ha interrumpido. Vuelve a iniciar la prueba.');console.error('Error durante la detección facial:',err)}
    }
-   if(onScan){if(landmarker)scanStep(v)}else{segStep(v);draw(v)}}}
+   if(onScan){if(landmarker)scanStep(v)}
+   else if(v.currentTime!==lastDrawn&&now-lastDrawAt>=Q.renderEvery){
+    lastDrawn=v.currentTime;lastDrawAt=now;
+    if(Q.seg&&Object.keys(activeLook()).length)segStep(v);
+    draw(v);
+   }
+   if(onMir){const cost=performance.now()-t0;
+    if(cost<150){workSum+=cost;workN++;if(workN>=20){const avg=workSum/workN;workSum=0;workN=0;if(Q.auto&&avg>34&&Q.level>0)setLevel(Q.level-1)}}}
+  }
+ }
  requestAnimationFrame(loop);
 }
-let last=-1,lastDetectAt=0;loop();
+loop();
 
 /* ---------- Interfaz ---------- */
 function go(id){
  $$('.screen').forEach(s=>s.classList.toggle('on',s.id===id));
  if(id==='scan'){done=false;okSince=0;$('#scanTitle').textContent='Coloca tu rostro aquí';$('#scanSub').textContent='Mirando a la cámara';$$('.checks li').forEach(l=>l.classList.remove('ok'));startCamera()}
- if(id==='mirror'){render();if(!stream)startCamera();else{$('#vScan').pause();$('#vScan').srcObject=null;$('#vMain').srcObject=stream;$('#vMain').play().catch(err=>{hint('No se pudo reanudar la cámara. Vuelve al inicio para intentarlo de nuevo.');console.error('No se pudo reanudar la cámara:',err)})}}
+ if(id==='mirror'){render();workSum=0;workN=0;lastDrawn=-1;lastDetectAt=0;if(!stream)startCamera();else{$('#vScan').pause();$('#vScan').srcObject=null;$('#vMain').srcObject=stream;$('#vMain').play().catch(err=>{hint('No se pudo reanudar la cámara. Vuelve al inicio para intentarlo de nuevo.');console.error('No se pudo reanudar la cámara:',err)})}}
  if(id==='welcome'){
   stopCamera();S.look={};S.cat='base';$('#lookPanel').classList.remove('open');
   if(exportUrl){URL.revokeObjectURL(exportUrl);exportUrl=null}
@@ -373,6 +410,8 @@ document.addEventListener('click',e=>{const t=e.target;let b;
 document.addEventListener('change',e=>{const c=e.target.closest('[data-t]');if(c){S.look[c.dataset.t].on=c.checked;refresh()}});
 $('#intensity').addEventListener('input',e=>{const c=S.look[S.cat];if(c)c.i=e.target.value/100});
 $('#btnLook').onclick=e=>{const open=$('#lookPanel').classList.toggle('open');e.currentTarget.classList.toggle('act',open);e.currentTarget.setAttribute('aria-pressed',open)};
+$('#btnQuality').textContent='Calidad: '+qualityLabel();
+$('#btnQuality').onclick=()=>{const order=['auto','high','fluid'];setMode(order[(order.indexOf(QUALITY.mode)+1)%3]);lastDrawn=-1;workSum=0;workN=0};
 $('#btnCompare').onclick=e=>{const st=$('#stage');st.classList.toggle('cmp');e.currentTarget.setAttribute('aria-pressed',st.classList.contains('cmp'));st.classList.contains('cmp')?anim(50):(cur=0,pos(0))};
 if(/calibrar/.test(location.search))$('#btnCal').hidden=false;
 $('#btnCal').onclick=()=>{const v=$('#vMain');if(!v.videoWidth||!confirm('Coloca una tarjeta gris o blanca en el centro de la imagen. ¿Calibrar ahora?'))return;
