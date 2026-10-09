@@ -252,7 +252,7 @@ function draw(v){
   pigmentCtx.setTransform(dpr,0,0,dpr,-x0*dpr,-y0*dpr);
   pigmentCtx.fillStyle='#fff';pigmentCtx.fill(shape,rule);
   pigmentCtx.save();pigmentCtx.globalCompositeOperation='destination-in';pigmentCtx.filter=`blur(${feather}px)`;pigmentCtx.fillStyle='#fff';pigmentCtx.fill(shape,rule);pigmentCtx.restore();
-  pigmentCtx.save();pigmentCtx.globalCompositeOperation='source-in';pigmentCtx.filter=`blur(${Math.max(3,fw*.022)}px)`;pigmentCtx.drawImage(cx,0,0,W,H);pigmentCtx.restore();
+  pigmentCtx.save();pigmentCtx.globalCompositeOperation='source-in';pigmentCtx.filter=`blur(${Math.max(3,fw*.022)}px)`;pigmentCtx.drawImage(cv,0,0,W,H);pigmentCtx.restore();
   if(hasSkin)skinOnlyLayer();
   cx.save();cx.globalAlpha=alpha;cx.drawImage(pigmentCanvas,x0,y0,pcW/dpr,pcH/dpr);cx.restore()};
  const spotXY=(x,y,r,hex,a,mode)=>{const g=cx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,hex);g.addColorStop(.6,hex+'B0');g.addColorStop(1,hex+'00');
@@ -345,26 +345,28 @@ let last=-1,lastDetectAt=0,lastDrawAt=0,lastDrawn=-1,workSum=0,workN=0;
 function loop(){
  const now=performance.now();
  const onScan=$('#scan').classList.contains('on'),onMir=$('#mirror').classList.contains('on');
- if(onScan||onMir){
-  const v=onScan?$('#vScan'):$('#vMain');
-  if(v.readyState>=2){
-   const t0=performance.now();
-   sense(v);
-   if(landmarker&&v.currentTime!==last&&now-lastDetectAt>=Q.detEvery){
-    last=v.currentTime;lastDetectAt=now;
-    try{LM=smooth(detect(v))}
-    catch(err){LM=null;hint('La detección facial se ha interrumpido. Vuelve a iniciar la prueba.');console.error('Error durante la detección facial:',err)}
+ try{
+  if(onScan||onMir){
+   const v=onScan?$('#vScan'):$('#vMain');
+   if(v.readyState>=2){
+    const t0=performance.now();
+    sense(v);
+    if(landmarker&&v.currentTime!==last&&now-lastDetectAt>=Q.detEvery){
+     last=v.currentTime;lastDetectAt=now;
+     try{LM=smooth(detect(v))}
+     catch(err){LM=null;hint('La detección facial se ha interrumpido. Vuelve a iniciar la prueba.');console.error('Error durante la detección facial:',err)}
+    }
+    if(onScan){if(landmarker)scanStep(v)}
+    else if(v.currentTime!==lastDrawn&&now-lastDrawAt>=Q.renderEvery){
+     lastDrawn=v.currentTime;lastDrawAt=now;
+     if(Q.seg&&Object.keys(activeLook()).length)segStep(v);
+     draw(v);
+    }
+    if(onMir){const cost=performance.now()-t0;
+     if(cost<150){workSum+=cost;workN++;if(workN>=20){const avg=workSum/workN;workSum=0;workN=0;if(Q.auto&&avg>34&&Q.level>0)setLevel(Q.level-1)}}}
    }
-   if(onScan){if(landmarker)scanStep(v)}
-   else if(v.currentTime!==lastDrawn&&now-lastDrawAt>=Q.renderEvery){
-    lastDrawn=v.currentTime;lastDrawAt=now;
-    if(Q.seg&&Object.keys(activeLook()).length)segStep(v);
-    draw(v);
-   }
-   if(onMir){const cost=performance.now()-t0;
-    if(cost<150){workSum+=cost;workN++;if(workN>=20){const avg=workSum/workN;workSum=0;workN=0;if(Q.auto&&avg>34&&Q.level>0)setLevel(Q.level-1)}}}
   }
- }
+ }catch(err){console.error('Error en el bucle de render:',err)}
  requestAnimationFrame(loop);
 }
 loop();
