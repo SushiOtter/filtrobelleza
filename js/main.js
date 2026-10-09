@@ -1,5 +1,9 @@
 import {CATALOG,CAT_LABEL,LOOKS} from "./product-data.js";
 import {faceSVG} from "./face-art.js";
+import {translate,pickLang} from "./i18n.js";
+import {cl,hexA,luminance,adaptHex,cameraErrorKey,recommendedShadeIndex,blushIndex} from "./util.js";
+import {detectMobile,levelConfig,defaultLevel,nextMode} from "./quality.js";
+import {OVAL,LEYE,REYE,LIPO,LIPI,LBROW,RBROW,LLID,LBR,RLID,RBR,FOPT,FDEF,eyeGeom} from "./geometry.js";
 
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const WASM="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
@@ -13,47 +17,9 @@ const findProd=id=>Object.values(CATALOG).flat().find(p=>p.id===id);
 const activeLook=()=>{const o={};for(const k in S.look)if(S.look[k].on)o[k]=S.look[k];return o};
 const pos=v=>{$('#stage').style.setProperty('--pos',v+'%');$('#divider').setAttribute('aria-valuenow',Math.round(v))};
 
-/* ---------- Idioma (ES/EN) y textos de la interfaz ---------- */
-const I18N={
-es:{
- 'welcome.eyebrow':'Belleza profesional · Experiencia virtual','welcome.h1':'Tu belleza.<br>A tu manera.','welcome.p':'Descubre cómo podrían quedarte nuestros productos.','welcome.start':'Comenzar','welcome.small':'Una experiencia de belleza · Sin compromiso',
- 'consent.eyebrow':'Tu privacidad es lo primero','consent.h2':'Utilizaremos tu cámara para crear esta experiencia de prueba virtual.','consent.p':'El vídeo se procesa en este dispositivo; no se envía ni se guarda. Solo se guarda una imagen si la descargas. Si calibras el color, la calibración queda guardada en este navegador. La cámara se apaga al salir.','consent.accept':'Aceptar y continuar','consent.no':'Ahora no',
- 'scan.eyebrow':'Prueba virtual','scan.cancel':'Cancelar','scan.retry':'Reintentar cámara','scan.c0':'Rostro detectado','scan.c1':'Iluminación adecuada','scan.c2':'Posición correcta',
- 'mirror.back':'← Atrás','mirror.backAria':'Volver','mirror.look':'Mi look','mirror.compare':'Comparar','mirror.save':'Guardar','mirror.calibrate':'Calibrar','mirror.tag':'Elige un producto para empezar.','mirror.before':'Antes','mirror.after':'Después','mirror.subtle':'Sutil','mirror.intense':'Intensa','mirror.intensity':'Intensidad','mirror.catalog':'Catálogo de demostración · Productos, precios y ubicación ficticios',
- 'store.title':'Ubicación de ejemplo','store.close':'Cerrar','store.aisle':'Pasillo de ejemplo','store.section':'Sección','store.demo':'El catálogo y la ubicación son datos ficticios de demostración; no representan existencias reales.',
- 'save.eyebrow':'Tu selección','save.h2':'Tu look, listo para guardar','save.placeholder':'La vista previa de tu look aparecerá aquí.','save.download':'Descargar imagen','save.finish':'Terminar','save.keep':'Seguir probando','save.previewAlt':'Vista previa del look creado','save.needProduct':'Prueba al menos un producto antes de guardar tu look.','save.align':'Alinea tu rostro con la cámara antes de guardar.','save.preparing':'Preparando la imagen…','save.ready':'Imagen creada en este dispositivo. Descárgala para guardarla; no se ha subido a ningún servidor.','save.error':'No se pudo preparar la imagen. Vuelve al espejo e inténtalo de nuevo.','save.errorShort':'No se pudo preparar la imagen.',
- 'cam.prep':'Preparando la cámara','cam.permission':'Acepta el permiso del navegador para continuar.','cam.face':'Coloca tu rostro aquí','cam.looking':'Mirando a la cámara','cam.loadingFace':'Cargando detección facial…','cam.lost':'Se ha perdido la cámara','cam.lostMsg':'La cámara se ha desconectado. Comprueba el dispositivo y vuelve a intentarlo.','cam.resume':'No se pudo reanudar la cámara. Vuelve al inicio para intentarlo de nuevo.','cam.failTitle':'No se pudo iniciar la prueba','cam.unsupported':'Este navegador no ofrece acceso a la cámara. Prueba con Chrome o Edge.','cam.denied':'No se concedió permiso para la cámara. Actívalo en el navegador y vuelve a intentarlo.','cam.notfound':'No se encontró ninguna cámara conectada.','cam.busy':'La cámara está ocupada por otra aplicación. Ciérrala y vuelve a intentarlo.','cam.security':'Abre la aplicación desde localhost o una conexión HTTPS para usar la cámara.','cam.generic':'No se pudo cargar la cámara o la detección facial. Comprueba tu conexión y vuelve a intentarlo.',
- 'scan.perfect':'Perfecto.','scan.preparing':'Estamos preparando tu experiencia.',
- 'hint.noFace':'No vemos tu rostro. Mira a la cámara.','hint.dark':'Poca luz: acércate a una zona más iluminada.','hint.yaw':'Mira a la cámara para ver el resultado completo.','hint.detectFail':'La detección facial se ha interrumpido. Vuelve a iniciar la prueba.',
- 'quality.auto':'Automática','quality.high':'Alta','quality.fluid':'Fluida','quality.btn':l=>`Calidad: ${l}`,
- 'cat.base':'Base','cat.blush':'Colorete','cat.lips':'Labios','cat.eyes':'Ojos','cat.glow':'Iluminador','cat.contour':'Contorno','cat.liner':'Delineador','cat.lash':'Pestañas','cat.brow':'Cejas',
- 'fin.Mate':'Mate','fin.Luminoso':'Luminoso','fin.Satinado':'Satinado','fin.Brillo':'Brillo','fin.Glitter':'Glitter','fin.Suave':'Suave','fin.Definido':'Definido','fin.Definida':'Definida','fin.Fino':'Fino','fin.Clásico':'Clásico','fin.Alado':'Alado','fin.Natural':'Natural','fin.Volumen':'Volumen',
- 'prod.try':'Probar','shade.selected':'Tu selección','look.empty':'Aún no has probado nada.','look.ideas':'Ideas de combinación del catálogo de demostración: ','look.store':'Ver ubicación de ejemplo',
- 'rec.button':'Recomendar mi tono','rec.needFace':'Mira a la cámara para analizar tu tono.','rec.done':(b,c)=>`Tono sugerido: base ${b} · colorete ${c}`,
- 'cal.confirm':'Coloca una tarjeta gris o blanca en el centro de la imagen. ¿Calibrar ahora?','cal.error':'No se pudo guardar la calibración en este navegador.',
- 'export.look':'TU LOOK','export.products':'PRODUCTOS PROBADOS','export.disclaimer':'Vista previa orientativa. El resultado puede variar según la luz y la pantalla.','export.noImage':'No hay una imagen de cámara disponible para exportar.','export.noBlob':'El navegador no pudo crear la imagen.'
-},
-en:{
- 'welcome.eyebrow':'Professional beauty · Virtual experience','welcome.h1':'Your beauty.<br>Your way.','welcome.p':'Discover how our products could look on you.','welcome.start':'Start','welcome.small':'A beauty experience · No commitment',
- 'consent.eyebrow':'Your privacy comes first','consent.h2':'We will use your camera to create this virtual try-on experience.','consent.p':'The video is processed on this device; it is not sent or stored. An image is only saved if you download it. If you calibrate the colour, the calibration is stored in this browser. The camera turns off when you leave.','consent.accept':'Accept and continue','consent.no':'Not now',
- 'scan.eyebrow':'Virtual try-on','scan.cancel':'Cancel','scan.retry':'Retry camera','scan.c0':'Face detected','scan.c1':'Good lighting','scan.c2':'Correct position',
- 'mirror.back':'← Back','mirror.backAria':'Back','mirror.look':'My look','mirror.compare':'Compare','mirror.save':'Save','mirror.calibrate':'Calibrate','mirror.tag':'Choose a product to start.','mirror.before':'Before','mirror.after':'After','mirror.subtle':'Subtle','mirror.intense':'Intense','mirror.intensity':'Intensity','mirror.catalog':'Demo catalog · Fictional products, prices and location',
- 'store.title':'Example location','store.close':'Close','store.aisle':'Example aisle','store.section':'Section','store.demo':'The catalog and location are fictional demo data; they do not represent real stock.',
- 'save.eyebrow':'Your selection','save.h2':'Your look, ready to save','save.placeholder':'Your look preview will appear here.','save.download':'Download image','save.finish':'Finish','save.keep':'Keep trying','save.previewAlt':'Preview of the created look','save.needProduct':'Try at least one product before saving your look.','save.align':'Align your face with the camera before saving.','save.preparing':'Preparing the image…','save.ready':'Image created on this device. Download it to save it; it has not been uploaded to any server.','save.error':'Could not prepare the image. Go back to the mirror and try again.','save.errorShort':'Could not prepare the image.',
- 'cam.prep':'Preparing the camera','cam.permission':'Accept the browser permission to continue.','cam.face':'Place your face here','cam.looking':'Looking at the camera','cam.loadingFace':'Loading face detection…','cam.lost':'Camera lost','cam.lostMsg':'The camera has disconnected. Check the device and try again.','cam.resume':'Could not resume the camera. Go back to the start to try again.','cam.failTitle':'Could not start the try-on','cam.unsupported':'This browser does not offer camera access. Try Chrome or Edge.','cam.denied':'Camera permission was not granted. Enable it in the browser and try again.','cam.notfound':'No connected camera was found.','cam.busy':'The camera is in use by another application. Close it and try again.','cam.security':'Open the app from localhost or an HTTPS connection to use the camera.','cam.generic':'Could not load the camera or face detection. Check your connection and try again.',
- 'scan.perfect':'Perfect.','scan.preparing':'We are preparing your experience.',
- 'hint.noFace':'We cannot see your face. Look at the camera.','hint.dark':'Low light: move to a brighter area.','hint.yaw':'Look at the camera to see the full result.','hint.detectFail':'Face detection was interrupted. Start the try-on again.',
- 'quality.auto':'Auto','quality.high':'High','quality.fluid':'Smooth','quality.btn':l=>`Quality: ${l}`,
- 'cat.base':'Foundation','cat.blush':'Blush','cat.lips':'Lips','cat.eyes':'Eyes','cat.glow':'Highlighter','cat.contour':'Contour','cat.liner':'Liner','cat.lash':'Lashes','cat.brow':'Brows',
- 'fin.Mate':'Matte','fin.Luminoso':'Glow','fin.Satinado':'Satin','fin.Brillo':'Gloss','fin.Glitter':'Glitter','fin.Suave':'Soft','fin.Definido':'Defined','fin.Definida':'Defined','fin.Fino':'Thin','fin.Clásico':'Classic','fin.Alado':'Winged','fin.Natural':'Natural','fin.Volumen':'Volume',
- 'prod.try':'Try','shade.selected':'Your selection','look.empty':'You have not tried anything yet.','look.ideas':'Combination ideas from the demo catalog: ','look.store':'See example location',
- 'rec.button':'Recommend my tone','rec.needFace':'Look at the camera to analyse your tone.','rec.done':(b,c)=>`Suggested tone: foundation ${b} · blush ${c}`,
- 'cal.confirm':'Place a grey or white card in the centre of the image. Calibrate now?','cal.error':'Could not save the calibration in this browser.',
- 'export.look':'YOUR LOOK','export.products':'PRODUCTS TRIED','export.disclaimer':'Indicative preview. The result may vary with lighting and screen.','export.noImage':'No camera image is available to export.','export.noBlob':'The browser could not create the image.'
-}
-};
-let lang=(()=>{try{const s=localStorage.getItem('kiosco.lang');if(s==='es'||s==='en')return s}catch(e){}return /^en/i.test(navigator.language||'')?'en':'es'})();
-const t=(k,...a)=>{const v=(I18N[lang]&&I18N[lang][k])??I18N.es[k];return typeof v==='function'?v(...a):(v??k)};
+/* ---------- Idioma (ES/EN): diccionarios en js/i18n.js ---------- */
+let lang=pickLang((()=>{try{return localStorage.getItem('kiosco.lang')}catch(e){return null}})(),navigator.language||'');
+const t=(k,...a)=>translate(lang,k,...a);
 const exportNoUpload=()=>lang==='en'?'The image is prepared on this device. It is not sent to any server.':'La imagen se prepara en este dispositivo. No se envía a ningún servidor.';
 function applyLang(){document.documentElement.lang=lang;
  $$('[data-i18n]').forEach(el=>{el.textContent=t(el.dataset.i18n)});
@@ -66,16 +32,13 @@ $$('.btnLang').forEach(lb=>lb.onclick=()=>{lang=lang==='es'?'en':'es';try{localS
 /* ---------- Modo quiosco (?kiosco o ?kiosco=segundos) ---------- */
 const KIOSK=(()=>{const m=location.search.match(/[?&]kiosco(?:=(\d+))?/);return m?{on:true,idle:Math.max(10,+(m[1]||45))*1000}:{on:false,idle:0}})();
 
-/* ---------- Calidad adaptativa: evita tirones en móvil y equipos lentos ---------- */
-const IS_MOBILE=matchMedia('(pointer:coarse)').matches||/Android|iPhone|iPad|iPod|Mobile|Silk/i.test(navigator.userAgent);
-const Q={level:2,dpr:2,smooth:true,seg:true,segEvery:140,detEvery:33,renderEvery:0,passes:1,auto:true,cpu:false};
-function setLevel(l){l=Math.max(0,Math.min(2,l));Q.level=l;
- Q.dpr=l>=2?2:l===1?1.5:1.25;Q.smooth=l>=2;Q.seg=l>=1;
- Q.segEvery=l>=2?200:l===1?300:99999;Q.detEvery=l>=2?33:l===1?50:66;
- Q.renderEvery=l>=2?0:l===1?33:50;Q.passes=l>=2?1:l===1?.85:.62;
- if(!Q.seg&&segmenter){try{segmenter.close()}catch(e){}segmenter=null;segData=null;skinReady=false}}
-const DEFAULT_LEVEL=()=>Q.cpu?0:LOW_END?0:IS_MOBILE?1:2;
+/* ---------- Calidad adaptativa (perfiles en js/quality.js) ---------- */
+const IS_MOBILE=detectMobile(matchMedia('(pointer:coarse)').matches,navigator.userAgent);
 const LOW_END=IS_MOBILE&&((navigator.hardwareConcurrency||8)<=2||(navigator.deviceMemory||8)<=2);
+const Q={level:2,dpr:2,smooth:true,seg:true,segEvery:140,detEvery:33,renderEvery:0,passes:1,auto:true,cpu:false};
+function setLevel(l){Object.assign(Q,levelConfig(l));
+ if(!Q.seg&&segmenter){try{segmenter.close()}catch(e){}segmenter=null;segData=null;skinReady=false}}
+const DEFAULT_LEVEL=()=>defaultLevel({cpu:Q.cpu,lowEnd:LOW_END,mobile:IS_MOBILE});
 const QUALITY={mode:'auto'};
 function qualityLabel(){return QUALITY.mode==='high'?t('quality.high'):QUALITY.mode==='fluid'?t('quality.fluid'):t('quality.auto')}
 function setMode(m){QUALITY.mode=m;Q.auto=m==='auto';
@@ -83,6 +46,7 @@ function setMode(m){QUALITY.mode=m;Q.auto=m==='auto';
  const b=$('#btnQuality');if(b){b.textContent=t('quality.btn',qualityLabel());b.classList.toggle('act',m!=='auto')}
  if(Q.seg&&!segmenter&&!segUnavailable&&stream)startCamera()}
 setLevel(DEFAULT_LEVEL());
+restoreLook();
 
 /* ---------- Cámara + detección (todo en el dispositivo, nada se sube ni se guarda) ---------- */
 async function startCamera(){
@@ -119,7 +83,7 @@ async function startCamera(){
     catch(gpuError){if(epoch!==cameraEpoch)return;detector=await FaceLandmarker.createFromOptions(fs,{...options,baseOptions:{modelAssetPath:MODEL,delegate:'CPU'}});Q.cpu=true}
     if(epoch!==cameraEpoch){detector.close();return}
     landmarker=detector;
-    if(Q.cpu){if(Q.auto){setLevel(0);Q.detEvery=90;Q.renderEvery=66}console.warn('Detección facial en CPU: se reduce la calidad para mantener la fluidez.')}
+    if(Q.cpu){if(Q.auto){setLevel(0);Q.detEvery=90;Q.renderEvery=66}hint(t('hint.cpu'));console.warn('Detección facial en CPU: se reduce la calidad para mantener la fluidez.')}
    }
    if(Q.seg&&!segmenter&&!segUnavailable){
     try{
@@ -136,8 +100,7 @@ async function startCamera(){
  }catch(err){
   if(epoch!==cameraEpoch)return;
   stopCamera();
-  const messages={UNSUPPORTED:t('cam.unsupported'),NotAllowedError:t('cam.denied'),NotFoundError:t('cam.notfound'),NotReadableError:t('cam.busy'),SecurityError:t('cam.security')};
-  const message=messages[err.name]||t('cam.generic');
+  const message=t(cameraErrorKey(err.name));
   $('#scanTitle').textContent=t('cam.failTitle');
   $('#scanSub').textContent=message;
   $('#scanRetry').hidden=false;
@@ -167,14 +130,7 @@ function scanStep(v){
  else okSince=0;
 }
 
-/* ---------- Motor de maquillaje sobre landmarks ---------- */
-const OVAL=[10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
-const LEYE=[33,246,161,160,159,158,157,173,133,155,154,153,145,144,163,7],REYE=[362,398,384,385,386,387,388,466,263,249,390,373,374,380,381,382];
-const LIPO=[61,146,91,181,84,17,314,405,321,375,291,409,270,269,267,0,37,39,40,185],LIPI=[78,95,88,178,87,14,317,402,318,324,308,415,310,311,312,13,82,81,80,191];
-const LBROW=[70,63,105,66,107,55,65,52,53,46],RBROW=[300,293,334,296,336,285,295,282,283,276];
-const LLID=[33,246,161,160,159,158,157,173,133],LBR=[70,63,105,66,107],RLID=[263,466,388,387,386,385,384,398,362],RBR=[300,293,334,296,336];
-const FOPT={base:[['matte','Mate'],['glow','Luminoso']],blush:[['matte','Mate'],['satin','Satinado']],lips:[['matte','Mate'],['satin','Satinado'],['gloss','Brillo']],eyes:[['matte','Mate'],['satin','Satinado'],['glitter','Glitter']],contour:[['soft','Suave'],['defined','Definido']],liner:[['thin','Fino'],['classic','Clásico'],['wing','Alado']],lash:[['natural','Natural'],['volume','Volumen']],brow:[['natural','Natural'],['defined','Definida']]};
-const FDEF={base:'matte',blush:'matte',lips:'satin',eyes:'matte',contour:'soft',liner:'classic',lash:'natural',brow:'natural'};
+/* ---------- Motor de maquillaje sobre landmarks (índices y geometría en js/geometry.js) ---------- */
 const cv=$('#cv'),cx=cv.getContext('2d'),cvB=$('#cvB'),cxB=cvB.getContext('2d');
 const pigmentCanvas=document.createElement('canvas'),pigmentCtx=pigmentCanvas.getContext('2d');
 const segCanvas=document.createElement('canvas');segCanvas.width=segCanvas.height=256;const segCtx=segCanvas.getContext('2d',{willReadFrequently:true});
@@ -195,7 +151,7 @@ function sense(v){
  let sl=0,sn=0,sr=0,sg=0,sb=0;if(LM)[151,205,425,117,346,50,280,168,234,454].forEach(i=>{const x=Math.min(31,Math.max(0,Math.round(LM[i].x*31))),y=Math.min(23,Math.max(0,Math.round(LM[i].y*23))),k=(y*32+x)*4;sl+=d[k]*.3+d[k+1]*.59+d[k+2]*.11;sr+=d[k];sg+=d[k+1];sb+=d[k+2];sn++});
  if(sn){skinLum+=(sl/sn-skinLum)*.15;skinRGB[0]+=(sr/sn-skinRGB[0])*.15;skinRGB[1]+=(sg/sn-skinRGB[1])*.15;skinRGB[2]+=(sb/sn-skinRGB[2])*.15}
 }
-const adapt=hex=>{const n=parseInt(hex.slice(1),16);return '#'+[n>>16&255,n>>8&255,n&255].map((v,i)=>Math.max(0,Math.min(255,Math.round(v*ENV.tint[i]*ENV.exp))).toString(16).padStart(2,'0')).join('')};
+const adapt=hex=>adaptHex(hex,ENV.tint,ENV.exp);
 const dc=document.createElement('canvas'),dx=dc.getContext('2d');let lastTs=0;
 function detect(v){ // con poca luz se aclara la imagen antes de detectar
  let src=v;if(ENV.dark&&v.videoWidth){dc.width=640;dc.height=Math.round(640*v.videoHeight/v.videoWidth);dx.filter='brightness(1.9) contrast(1.15)';dx.drawImage(v,0,0,dc.width,dc.height);src=dc}
@@ -218,16 +174,8 @@ function smooth(raw){const now=performance.now();
  return SM}
 let hintMsg='';const hint=m=>{if(m!==hintMsg){hintMsg=m;const h=$('#hint');h.textContent=m;h.style.opacity=m?1:0}};
 
-/* Geometría del ojo: línea de pestañas, pliegue adaptado al ojo y a la ceja, invariante a la inclinación de la cabeza */
-function eyeGeom(lid,brow,P){
- const pts=lid.map(i=>P(i)),first=pts[0],last=pts[pts.length-1],W=Math.hypot(last[0]-first[0],last[1]-first[1])||1,u=[(last[0]-first[0])/W,(last[1]-first[1])/W];
- const bp=brow.map(i=>P(i)),bc=[bp.reduce((s,p)=>s+p[0],0)/bp.length,bp.reduce((s,p)=>s+p[1],0)/bp.length],ec=[(first[0]+last[0])/2,(first[1]+last[1])/2];
- let n=[-u[1],u[0]];if(n[0]*(bc[0]-ec[0])+n[1]*(bc[1]-ec[1])<0)n=[-n[0],-n[1]];
- const crease=pts.map((p,k)=>{const t=Math.min(.98,Math.max(.02,k/(pts.length-1))),b=bp[Math.round(t*(bp.length-1))],room=Math.max(W*.12,(b[0]-p[0])*n[0]+(b[1]-p[1])*n[1]);
-  const h=Math.min(W*.34*Math.pow(Math.sin(Math.PI*t),.8),room*.7);return[p[0]+n[0]*h,p[1]+n[1]*h]});
- return{pts,crease,n,u,W}}
+/* Geometría del ojo (eyeGeom -> js/geometry.js) y curvas suaves */
 const curve=(a,p=new Path2D(),move=true)=>{move?p.moveTo(a[0][0],a[0][1]):p.lineTo(a[0][0],a[0][1]);for(let k=1;k<a.length-1;k++)p.quadraticCurveTo(a[k][0],a[k][1],(a[k][0]+a[k+1][0])/2,(a[k][1]+a[k+1][1])/2);p.lineTo(a[a.length-1][0],a[a.length-1][1]);return p};
-const cl=x=>Math.max(0,Math.min(1,x));
 
 function draw(v){
  const st=$('#stage'),W=st.clientWidth,H=st.clientHeight,cmp=st.classList.contains('cmp');
@@ -273,9 +221,8 @@ function draw(v){
     skinV=segVersion;skinQX=qx;skinQY=qy;skinW=pcW;skinH=pcH;
    }
   }
-  const skinOnlyLayer=()=>{pigmentCtx.save();pigmentCtx.setTransform(1,0,0,1,0,0);pigmentCtx.globalCompositeOperation='destination-in';pigmentCtx.filter='none';pigmentCtx.drawImage(skinCanvas,0,0);pigmentCtx.restore()};
-  const lumHex=hex=>{const n=parseInt(hex.slice(1),16);return (n>>16&255)*.3+(n>>8&255)*.59+(n&255)*.11};
-  /* máscara suavizada reutilizable: se difumina una vez y cada `tint` solo la colorea y compone */
+const skinOnlyLayer=()=>{pigmentCtx.save();pigmentCtx.setTransform(1,0,0,1,0,0);pigmentCtx.globalCompositeOperation='destination-in';pigmentCtx.filter='none';pigmentCtx.drawImage(skinCanvas,0,0);pigmentCtx.restore()};
+   /* máscara suavizada reutilizable: se difumina una vez y cada `tint` solo la colorea y compone */
   const buildMask=(shape,feather,rule='nonzero',skinOnly=false)=>{
    pigmentCtx.setTransform(1,0,0,1,0,0);pigmentCtx.clearRect(0,0,pcW,pcH);
    pigmentCtx.setTransform(dpr,0,0,dpr,-x0*dpr,-y0*dpr);
@@ -291,9 +238,8 @@ function draw(v){
    pigmentCtx.save();pigmentCtx.setTransform(1,0,0,1,0,0);pigmentCtx.globalCompositeOperation='source-in';pigmentCtx.filter='none';pigmentCtx.fillStyle=makeGrad();pigmentCtx.fillRect(0,0,pcW,pcH);pigmentCtx.restore();
    cx.save();cx.globalCompositeOperation=blend;cx.globalAlpha=Math.min(1,Math.max(0,alpha));cx.drawImage(pigmentCanvas,x0,y0,pcW/dpr,pcH/dpr);cx.restore();
   };
-  const dev=p=>[(p[0]-x0)*dpr,(p[1]-y0)*dpr];
-  const hexA=(hex,a)=>hex+(Math.max(0,Math.min(255,Math.round(a*255))).toString(16).padStart(2,'0'));
-  /* mancha elíptica degradada compuesta en una capa, opcionalmente restringida a la piel */
+const dev=p=>[(p[0]-x0)*dpr,(p[1]-y0)*dpr];
+   /* mancha elíptica degradada compuesta en una capa, opcionalmente restringida a la piel */
   const blob=(x,y,rx,ry,rot,hex,alpha,blend,skinOnly=true)=>{
    if(alpha<=.002)return;
    const R=Math.max(rx,ry),bxp=Math.max(0,Math.floor((x-R-x0)*dpr)),byp=Math.max(0,Math.floor((y-R-y0)*dpr));
@@ -327,9 +273,9 @@ function draw(v){
  const faceMask=new Path2D();[OVAL,LEYE,REYE,LIPO,LBROW,RBROW].forEach(x=>path(x,faceMask));
  const roll=Math.atan2(P(263)[1]-P(33)[1],P(263)[0]-P(33)[0]);
 
- if(L.base){const b=L.base,i=b.i,delta=(lumHex(b.hex)-skinLum)/255;
+ if(L.base){const b=L.base,i=b.i,delta=(luminance(b.hex)-skinLum)/255;
   if(Q.smooth)smoothSkin(faceMask,fw*.024,.3*i,'evenodd');
-  buildMask(faceMask,fw*.03,'evenodd',true);
+  buildMask(faceMask,fw*.034,'evenodd',true);
   tint(b.hex,.48*i,'color');
   if(Q.passes>=.8)tint(b.hex,.26*i,'soft-light');
   if(delta<-.015)tint(b.hex,Math.min(.55,.16-delta*.9)*i,'multiply');
@@ -366,13 +312,15 @@ function draw(v){
   if(Q.passes>=.8)tintGrad(()=>{const gr=pigmentCtx.createLinearGradient(a[0],a[1],z[0],z[1]);
    gr.addColorStop(0,hexA(b.hex,0));gr.addColorStop(.2,hexA(b.hex,.4));gr.addColorStop(.8,hexA(b.hex,.4));gr.addColorStop(1,hexA(b.hex,0));return gr},.16*i*f,'soft-light')
  })}
- if(L.eyes){const e=L.eyes,i=e.i,hi=Q.level>=2;
-  for(const [g,f] of geoms){if(f<.02)continue;
-    const p=curve(g.pts);curve(g.crease.slice().reverse(),p,false);p.closePath();
-    buildMask(p,g.W*.018);
-    tint(e.hex,.5*i*f,'soft-light');
-    if(Q.passes>=.8)tint(e.hex,.26*i*f,'multiply');
-    if(hi)tint(e.hex,.16*i*f,'color');
+  if(L.eyes){const e=L.eyes,i=e.i,hi=Q.level>=2;
+   for(const [g,f] of geoms){if(f<.02)continue;
+     const p=curve(g.pts);curve(g.crease.slice().reverse(),p,false);p.closePath();
+     const A=dev(g.pts.reduce((a,q)=>[a[0]+q[0],a[1]+q[1]],[0,0]).map(v=>v/g.pts.length)),B=dev(g.crease.reduce((a,q)=>[a[0]+q[0],a[1]+q[1]],[0,0]).map(v=>v/g.crease.length));
+     const eyeGrad=(top,mid,bot)=>{const gr=pigmentCtx.createLinearGradient(A[0],A[1],B[0],B[1]);gr.addColorStop(0,hexA(e.hex,top));gr.addColorStop(.55,hexA(e.hex,mid));gr.addColorStop(1,hexA(e.hex,bot));return gr};
+     buildMask(p,g.W*.02);
+     tintGrad(()=>eyeGrad(.5,.28,.06),.5*i*f,'soft-light');
+     if(Q.passes>=.8)tintGrad(()=>eyeGrad(.3,.16,.02),.26*i*f,'multiply');
+     if(hi)tintGrad(()=>eyeGrad(.22,.12,.04),.16*i*f,'color');
    if(hi)for(let s=0;s<5;s++){const q=s/4,idx=Math.round(q*(g.pts.length-1)),pp=g.pts[idx],cp=g.crease[idx],gx=(pp[0]+cp[0])/2,gy=(pp[1]+cp[1])/2;
     spotXY(gx,gy,g.W*(.17-.07*q),e.hex,(.2-.12*q)*i*f,'multiply')}
    if(hi){cx.save();cx.strokeStyle=e.hex;cx.globalCompositeOperation='multiply';cx.globalAlpha=.16*i*f;cx.lineWidth=g.W*.03;cx.lineCap='round';cx.stroke(curve(g.crease));cx.restore();
@@ -470,35 +418,38 @@ function go(id){
  if(id==='save')stopCamera();
 }
 function render(){refresh();renderCats();renderProducts();renderShades()}
-function refresh(){$('#tag').style.opacity=Object.keys(S.look).length?0:1;renderLook()}
-function renderCats(){$('#cats').innerHTML=Object.keys(CAT_LABEL).map(k=>`<button class="${k===S.cat?'sel':''}" data-c="${k}">${t('cat.'+k)}</button>`).join('')}
-function renderProducts(){$('#products').innerHTML=CATALOG[S.cat].map(p=>`<button class="prod ${S.look[S.cat]?.pid===p.id?'sel':''}" data-p="${p.id}" style="--c:${p.shades[0].hex}"><div class="ph"></div><span>${p.brand}</span><b>${p.name}</b><span>${p.price}</span><em>${t('prod.try')}</em></button>`).join('')}
+function persistLook(){if(KIOSK.on)return;try{localStorage.setItem('kiosco.look',JSON.stringify(S.look))}catch(e){}}
+function restoreLook(){if(KIOSK.on)return;try{const raw=JSON.parse(localStorage.getItem('kiosco.look')||'null');if(!raw||typeof raw!=='object')return;const next={};for(const k in raw){const v=raw[k];if(!v||!v.pid)continue;const p=findProd(v.pid);if(!p)continue;const s=Math.max(0,Math.min(p.shades.length-1,v.s||0));const hex=(p.shades[s]&&p.shades[s].hex)||v.hex;if(!hex)continue;next[k]={pid:v.pid,s,i:cl(v.i??.6),hex,on:v.on!==false,f:v.f||FDEF[k]}}S.look=next}catch(e){}}
+function refresh(){$('#tag').style.opacity=Object.keys(S.look).length?0:1;persistLook();renderLook()}
+function renderCats(){$('#cats').innerHTML=Object.keys(CAT_LABEL).map(k=>`<button class="${k===S.cat?'sel':''}" data-c="${k}" aria-pressed="${k===S.cat}" aria-label="${t('cat.'+k)}">${t('cat.'+k)}</button>`).join('')}
+function renderProducts(){$('#products').innerHTML=CATALOG[S.cat].map(p=>`<button class="prod ${S.look[S.cat]?.pid===p.id?'sel':''}" data-p="${p.id}" aria-pressed="${S.look[S.cat]?.pid===p.id}" style="--c:${p.shades[0].hex}"><div class="ph"></div><span>${p.brand}</span><b>${p.name}</b><span>${p.price}</span><em>${t('prod.try')}</em></button>`).join('')}
 function renderShades(){const c=S.look[S.cat];$('.intensity').hidden=!c;if(!c){$('#shades').innerHTML='';renderFin();return}const p=findProd(c.pid);
  $('#shades').innerHTML=p.shades.map((s,i)=>`<button class="shade ${i===c.s?'sel':''}" data-s="${i}" style="background:${s.hex}" aria-label="${s.n}"></button>`).join('')+`<span style="margin-left:8px;white-space:nowrap">${p.shades[c.s].n} · ${t('shade.selected')}</span>`;renderFin();
  $('#intensity').value=Math.round(c.i*100)}
 function renderFin(){const o=FOPT[S.cat],c=S.look[S.cat];
- $('#fin').innerHTML=(o&&c)?o.map(([k,n])=>`<button class="${c.f===k?'sel':''}" data-f="${k}">${t('fin.'+n)}</button>`).join(''):''}
+ $('#fin').innerHTML=(o&&c)?o.map(([k,n])=>`<button class="${c.f===k?'sel':''}" data-f="${k}" aria-pressed="${c.f===k}">${t('fin.'+n)}</button>`).join(''):''}
 function apply(cat,pid,s,i){const p=findProd(pid);S.look[cat]={pid,s,i,hex:p.shades[s].hex,on:S.look[cat]?.on??true,f:S.look[cat]?.f??FDEF[cat]}}
 const suggest=()=>Object.entries(CATALOG).filter(([k])=>!S.look[k]).map(([,v])=>v[0]).slice(0,3);
 function renderLook(){const it=Object.entries(S.look),ideas=suggest();
  $('#lookList').innerHTML=it.length?it.map(([k,v])=>{const p=findProd(v.pid);return `<li><label><input type="checkbox" data-t="${k}" ${v.on?'checked':''}><span>${t('cat.'+k)}<small>${p.name} · ${p.shades[v.s].n}</small></span></label><button class="link" data-store="${v.pid}">${t('look.store')}</button></li>`}).join(''):`<li class="rec">${t('look.empty')}</li>`;
  $('#recs').innerHTML=it.length>1&&ideas.length?'<p class="rec">'+t('look.ideas')+ideas.map(p=>p.name).join(', ')+'.</p>':'';
- $('#looksRow').innerHTML=Object.keys(LOOKS).map(n=>`<button data-look="${n}">${n}</button>`).join('')}
+ $('#looksRow').innerHTML=(it.length?`<button class="reset" data-clear="1">${t('look.clear')}</button>`:'')+Object.keys(LOOKS).map(n=>`<button data-look="${n}">${n}</button>`).join('')}
 document.addEventListener('click',e=>{const t=e.target;let b;
  if(b=t.closest('[data-go]'))go(b.dataset.go);
  else if(t.closest('#scanRetry'))startCamera();
  else if(b=t.closest('[data-c]')){S.cat=b.dataset.c;renderCats();renderProducts();renderShades()}
- else if(b=t.closest('[data-p]')){apply(S.cat,b.dataset.p,0,S.look[S.cat]?.i??.6);renderProducts();renderShades();refresh()}
+ else if(b=t.closest('[data-p]')){const sel=S.look[S.cat]?.pid===b.dataset.p;if(sel){delete S.look[S.cat];$('#matchNote').hidden=true}else apply(S.cat,b.dataset.p,0,S.look[S.cat]?.i??.6);renderProducts();renderShades();refresh()}
  else if(b=t.closest('[data-s]')){const c=S.look[S.cat];apply(S.cat,c.pid,+b.dataset.s,c.i);renderShades();refresh()}
  else if(b=t.closest('[data-f]')){S.look[S.cat].f=b.dataset.f;renderFin()}
+ else if(b=t.closest('[data-clear]')){S.look={};$('#matchNote').hidden=true;renderProducts();renderShades();refresh()}
  else if(b=t.closest('[data-look]')){S.look={};for(const [k,[pi,s,i]] of Object.entries(LOOKS[b.dataset.look]))apply(k,CATALOG[k][pi].id,s,i);S.cat=Object.keys(S.look)[0];renderCats();renderProducts();renderShades();refresh()}
  else if(b=t.closest('[data-store]'))showStore(b.dataset.store);
  else if(b=t.closest('[data-ba]')){$('#stage').classList.add('cmp');anim(+b.dataset.ba)}});
 document.addEventListener('change',e=>{const c=e.target.closest('[data-t]');if(c){S.look[c.dataset.t].on=c.checked;refresh()}});
-$('#intensity').addEventListener('input',e=>{const c=S.look[S.cat];if(c)c.i=e.target.value/100});
+$('#intensity').addEventListener('input',e=>{const c=S.look[S.cat];if(c){c.i=e.target.value/100;persistLook()}});
 $('#btnLook').onclick=e=>{const open=$('#lookPanel').classList.toggle('open');e.currentTarget.classList.toggle('act',open);e.currentTarget.setAttribute('aria-pressed',open)};
 $('#btnQuality').textContent=t('quality.btn',qualityLabel());
-$('#btnQuality').onclick=()=>{const order=['auto','high','fluid'];setMode(order[(order.indexOf(QUALITY.mode)+1)%3]);lastDrawn=-1;workSum=0;workN=0};
+$('#btnQuality').onclick=()=>{setMode(nextMode(QUALITY.mode));lastDrawn=-1;workSum=0;workN=0};
 $('#btnCompare').onclick=e=>{const st=$('#stage');st.classList.toggle('cmp');e.currentTarget.setAttribute('aria-pressed',st.classList.contains('cmp'));st.classList.contains('cmp')?anim(50):(cur=0,pos(0))};
 if(/calibrar/.test(location.search))$('#btnCal').hidden=false;
  $('#btnCal').onclick=()=>{const v=$('#vMain');if(!v.videoWidth||!confirm(t('cal.confirm')))return;
@@ -527,12 +478,11 @@ $('#storeModal').addEventListener('click',e=>{if(e.target===$('#storeModal'))$('
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#storeModal').classList.remove('on')});
 
 /* ---------- Recomendación automática de tono ---------- */
-const toneLum=hex=>{const n=parseInt(hex.slice(1),16);return (n>>16&255)*.3+(n>>8&255)*.59+(n&255)*.11};
 function recommendTone(){
  if(!LM){hint(t('rec.needFace'));return}
  const base=CATALOG.base[0],blush=CATALOG.blush[0];
- let bi=0,bd=1e9;base.shades.forEach((s,k)=>{const d=Math.abs(toneLum(s.hex)-skinLum);if(d<bd){bd=d;bi=k}});
- const warm=skinRGB[0]-skinRGB[2],ci=Math.min(blush.shades.length-1,warm>32?1:warm<18?3:2);
+ const bi=recommendedShadeIndex(base.shades,skinLum);
+ const ci=blushIndex(skinRGB,blush.shades.length);
  apply('base',base.id,bi,S.look.base?.i??.6);
  apply('blush',blush.id,ci,S.look.blush?.i??.5);
  S.cat='base';render();$('#lookPanel').classList.add('open');$('#btnLook').classList.add('act');$('#btnLook').setAttribute('aria-pressed','true');

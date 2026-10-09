@@ -1,10 +1,10 @@
 // Catálogo de demostración (ficticio). Sustituir por API de catálogo/inventario real.
 const sh=a=>a.map((h,i)=>({n:'Tono 0'+(i+1),hex:h}));
 export const CATALOG={
- base:[{id:'b1',brand:'Maison Aube',name:'Skin Veil Foundation',price:'42 €',aisle:'02',section:'Complexion',shades:sh(['#F1D3B8','#E6BF9C','#D9A97F','#C28E64','#A87249','#8A5A38'])},
-       {id:'b2',brand:'Maison Aube',name:'Second Skin Tint',price:'34 €',aisle:'02',section:'Complexion',shades:sh(['#EFCFB4','#E2B691','#CF9C72','#B6805A'])}],
+ base:[{id:'b1',brand:'Maison Aube',name:'Skin Veil Foundation',price:'42 €',aisle:'02',section:'Complexion',shades:sh(['#F6D9C0','#F1D3B8','#E6BF9C','#D9A97F','#C28E64','#A87249','#8A5A38','#6E4526','#54341B','#3F2713'])},
+       {id:'b2',brand:'Maison Aube',name:'Second Skin Tint',price:'34 €',aisle:'02',section:'Complexion',shades:sh(['#F4D8BD','#EFCFB4','#E2B691','#CF9C72','#B6805A','#9C6746'])}],
  blush:[{id:'c1',brand:'Lumen',name:'Soft Flush',price:'28 €',aisle:'03',section:'Cheeks',shades:sh(['#E9A5A0','#E58C8A','#D77A7A','#C46A6A','#B5605F'])}],
- lips:[{id:'l1',brand:'Aube',name:'Velvet Lip',price:'26 €',aisle:'04',section:'Lips',shades:sh(['#C98B84','#B9626A','#A33F4B','#8C2D3A','#D9A58F','#7A3B3F'])}],
+ lips:[{id:'l1',brand:'Aube',name:'Velvet Lip',price:'26 €',aisle:'04',section:'Lips',shades:sh(['#D9B8A0','#C98B84','#B9626A','#A33F4B','#8C2D3A','#6E2731','#D9A58F','#C48A72'])}],
  eyes:[{id:'e1',brand:'Lumen',name:'Veil Shadow',price:'31 €',aisle:'05',section:'Eyes',shades:sh(['#C9A58C','#B38672','#8E6A5C','#6E5148'])}],
  glow:[{id:'g1',brand:'Lumen',name:'Halo Highlighter',price:'36 €',aisle:'03',section:'Cheeks',shades:sh(['#F3E2BE','#EBD3A0','#E0BF8A'])}],
  contour:[{id:'k1',brand:'Aube',name:'Sculpt Contour',price:'30 €',aisle:'02',section:'Complexion',shades:sh(['#A98A73','#93745E','#7C5E4B','#64483A'])}],

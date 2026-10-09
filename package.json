@@ -1,0 +1,10 @@
+{
+  "name": "kiosco-espejo-virtual",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Espejo virtual de belleza: prueba de maquillaje en el dispositivo.",
+  "scripts": {
+    "test": "node --test"
+  }
+}
