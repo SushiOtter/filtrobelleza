@@ -7,12 +7,13 @@ export const CATALOG={
  lips:[{id:'l1',brand:'Aube',name:'Velvet Lip',price:'26 €',aisle:'04',section:'Lips',shades:sh(['#C98B84','#B9626A','#A33F4B','#8C2D3A','#D9A58F','#7A3B3F'])}],
  eyes:[{id:'e1',brand:'Lumen',name:'Veil Shadow',price:'31 €',aisle:'05',section:'Eyes',shades:sh(['#C9A58C','#B38672','#8E6A5C','#6E5148'])}],
  glow:[{id:'g1',brand:'Lumen',name:'Halo Highlighter',price:'36 €',aisle:'03',section:'Cheeks',shades:sh(['#F3E2BE','#EBD3A0','#E0BF8A'])}],
+ contour:[{id:'k1',brand:'Aube',name:'Sculpt Contour',price:'30 €',aisle:'02',section:'Complexion',shades:sh(['#A98A73','#93745E','#7C5E4B','#64483A'])}],
  // cov = cobertura real del producto (1 = normal). hex = color MEDIDO del producto físico (no el de la web).
  liner:[{id:'i1',brand:'Lumen',name:'Line Precision Liner',price:'22 €',aisle:'05',section:'Eyes',cov:1,shades:sh(['#1A1412','#3A2A22','#2B3A55'])}],
  lash:[{id:'m1',brand:'Lumen',name:'Lift Mascara',price:'24 €',aisle:'05',section:'Eyes',cov:1,shades:sh(['#14100E','#3A2A22'])}],
  brow:[{id:'w1',brand:'Aube',name:'Brow Sculpt Pencil',price:'20 €',aisle:'06',section:'Brows',cov:1,shades:sh(['#CBB08A','#8A6A4C','#5B4333','#2E221B'])}]
 };
-export const CAT_LABEL={base:'Base',blush:'Colorete',lips:'Labios',eyes:'Ojos',glow:'Iluminador',liner:'Delineador',lash:'Pestañas',brow:'Cejas'};
+export const CAT_LABEL={base:'Base',blush:'Colorete',lips:'Labios',eyes:'Ojos',glow:'Iluminador',contour:'Contorno',liner:'Delineador',lash:'Pestañas',brow:'Cejas'};
 // cat: [producto, tono, intensidad]
 export const LOOKS={
  Natural:{base:[0,0,.35],blush:[0,0,.35],lips:[0,4,.4],brow:[0,1,.35]},
