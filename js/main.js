@@ -287,16 +287,22 @@ function draw(v){
    pigmentCtx.save();pigmentCtx.setTransform(1,0,0,1,0,0);pigmentCtx.globalCompositeOperation='source-in';pigmentCtx.filter='none';pigmentCtx.fillStyle=hex;pigmentCtx.fillRect(0,0,pcW,pcH);pigmentCtx.restore();
    cx.save();cx.globalCompositeOperation=blend;cx.globalAlpha=Math.min(1,Math.max(0,alpha));cx.drawImage(pigmentCanvas,x0,y0,pcW/dpr,pcH/dpr);cx.restore();
   };
+  const tintGrad=(makeGrad,alpha,blend)=>{if(alpha<=.002)return;
+   pigmentCtx.save();pigmentCtx.setTransform(1,0,0,1,0,0);pigmentCtx.globalCompositeOperation='source-in';pigmentCtx.filter='none';pigmentCtx.fillStyle=makeGrad();pigmentCtx.fillRect(0,0,pcW,pcH);pigmentCtx.restore();
+   cx.save();cx.globalCompositeOperation=blend;cx.globalAlpha=Math.min(1,Math.max(0,alpha));cx.drawImage(pigmentCanvas,x0,y0,pcW/dpr,pcH/dpr);cx.restore();
+  };
+  const dev=p=>[(p[0]-x0)*dpr,(p[1]-y0)*dpr];
+  const hexA=(hex,a)=>hex+(Math.max(0,Math.min(255,Math.round(a*255))).toString(16).padStart(2,'0'));
   /* mancha elíptica degradada compuesta en una capa, opcionalmente restringida a la piel */
   const blob=(x,y,rx,ry,rot,hex,alpha,blend,skinOnly=true)=>{
    if(alpha<=.002)return;
-   const R=Math.max(rx,ry),bxp=Math.max(0,Math.floor(x-R-x0)),byp=Math.max(0,Math.floor(y-R-y0));
-   const bwp=Math.min(pcW-bxp,Math.ceil(2*R)+2),bhp=Math.min(pcH-byp,Math.ceil(2*R)+2);
+   const R=Math.max(rx,ry),bxp=Math.max(0,Math.floor((x-R-x0)*dpr)),byp=Math.max(0,Math.floor((y-R-y0)*dpr));
+   const bwp=Math.min(pcW-bxp,Math.ceil(2*R*dpr)+4),bhp=Math.min(pcH-byp,Math.ceil(2*R*dpr)+4);
    if(bwp<=0||bhp<=0)return;
    pigmentCtx.setTransform(1,0,0,1,0,0);pigmentCtx.clearRect(bxp,byp,bwp,bhp);
    pigmentCtx.setTransform(dpr,0,0,dpr,-x0*dpr,-y0*dpr);
    pigmentCtx.save();pigmentCtx.translate(x,y);pigmentCtx.rotate(rot);pigmentCtx.scale(rx,ry);
-   const g=pigmentCtx.createRadialGradient(0,0,0,0,0,1);g.addColorStop(0,hex);g.addColorStop(.5,hex+'B0');g.addColorStop(1,hex+'00');
+   const g=pigmentCtx.createRadialGradient(0,0,0,0,0,1);g.addColorStop(0,hex+'D9');g.addColorStop(.3,hex+'8C');g.addColorStop(.6,hex+'33');g.addColorStop(1,hex+'00');
    pigmentCtx.fillStyle=g;pigmentCtx.beginPath();pigmentCtx.arc(0,0,1,0,7);pigmentCtx.fill();pigmentCtx.restore();
    if(skinOnly&&hasSkin){pigmentCtx.save();pigmentCtx.setTransform(1,0,0,1,0,0);pigmentCtx.globalCompositeOperation='destination-in';pigmentCtx.filter='none';pigmentCtx.drawImage(skinCanvas,bxp,byp,bwp,bhp,bxp,byp,bwp,bhp);pigmentCtx.restore()}
    cx.save();cx.globalCompositeOperation=blend;cx.globalAlpha=Math.min(1,Math.max(0,alpha));cx.drawImage(pigmentCanvas,bxp,byp,bwp,bhp,x0+bxp/dpr,y0+byp/dpr,bwp/dpr,bhp/dpr);cx.restore();
@@ -330,32 +336,35 @@ function draw(v){
   else if(delta>.015)tint(b.hex,Math.min(.45,.12+delta*.8)*i,'screen');
   else if(Q.passes>=.8)tint(b.hex,.14*i,'multiply');
   if(b.f==='glow'&&Q.level>=2)[[151,.075],[205,.085],[425,.085],[168,.05]].forEach(([k,r])=>{const [x,y]=P(k);blob(x,y,fw*r,fw*r*.6,roll,'#FFF6E8',.2*i,'screen')})}
- if(L.blush){const b=L.blush
-  ;[[205,-1,fL],[425,1,fR]].forEach(([i,s,f])=>{if(f<.02)return;const [x,y]=P(i),nx=x-P(1)[0],ny=y-P(1)[1],nl=Math.hypot(nx,ny)||1;
-   const px=x+nx/nl*fw*.02,py=y+ny/nl*fw*.02,rot=roll+s*.28;
-   blob(px,py,fw*.135,fw*.092,rot,b.hex,.34*b.i*f,'color');
-   if(Q.passes>=.8)blob(px,py,fw*.135,fw*.092,rot,b.hex,.22*b.i*f,'soft-light');
-   if(Q.level>=2)blob(x,y,fw*.07,fw*.05,rot,b.hex,.18*b.i*f,'multiply');
-   if(b.f==='satin'&&Q.level>=2)blob(px-nx/nl*fw*.03,py-fw*.02,fw*.06,fw*.035,rot,'#FFF4EC',.1*b.i*f,'screen')
+ if(L.blush){const b=L.blush,i=b.i
+  ;[[205,-1,fL],[425,1,fR]].forEach(([idx,s,f])=>{if(f<.02)return;const [x,y]=P(idx),rot=roll+s*.32,bx=x,by=y-fw*.02;
+   blob(bx,by,fw*.14,fw*.09,rot,b.hex,.3*i*f,'color');
+   if(Q.passes>=.8)blob(bx,by,fw*.16,fw*.11,rot,b.hex,.18*i*f,'soft-light');
+   if(b.f==='satin'&&Q.level>=2)blob(bx,by-fw*.02,fw*.07,fw*.045,rot,'#FFF4EC',.12*i*f,'screen')
   })}
  if(L.contour){const k=L.contour,i=k.i
   ;[[234,205,-1],[454,425,1]].forEach(([ear,cheek,s])=>{const f=s<0?fL:fR;if(f<.02)return;
-   const [ex,ey]=P(ear),[bx,by]=P(cheek),mx=(ex+bx)/2,my=(ey+by)/2+fw*.05,rot=roll+s*.32;
-   blob(mx,my,fw*.14,fw*.08,rot,k.hex,.3*k.i*f,'multiply');
-   if(Q.level>=2)blob(mx,my,fw*.09,fw*.05,rot,k.hex,.16*k.i*f,'multiply')
+   const [ex,ey]=P(ear),[bx0,by0]=P(cheek),rot=roll+s*.3,mx=(ex+bx0)/2,my=(ey+by0)/2+fw*.045;
+   blob(mx,my,fw*.17,fw*.055,rot,k.hex,.2*k.i*f,'multiply');
+   blob(mx,my,fw*.1,fw*.035,rot,k.hex,.16*k.i*f,'multiply');
+   if(Q.passes>=.8)blob(mx,my,fw*.2,fw*.07,rot,k.hex,.09*k.i*f,'soft-light')
   });
   if(k.f==='defined'&&Q.level>=2)[136,150,149,176,148,152,365,379,378,400,377,397].forEach(idx=>{const [x,y]=P(idx),nx=P(1)[0]-x,ny=P(1)[1]-y,nl=Math.hypot(nx,ny)||1;
-   blob(x+nx/nl*fw*.035,y+ny/nl*fw*.02,fw*.075,fw*.05,Math.atan2(ny,nx),k.hex,.18*k.i*F,'multiply')})}
- if(L.glow){const g=L.glow;[[117,fL],[346,fR]].forEach(([i,f])=>{if(f<.02)return;const [x,y]=P(i),nx=x-P(1)[0],ny=y-P(1)[1],nl=Math.hypot(nx,ny)||1;
-   blob(x+nx/nl*fw*.015,y-fw*.01,fw*.09,fw*.045,roll,g.hex,.32*g.i*f,'screen');
-   if(Q.level>=2)blob(x+nx/nl*fw*.015,y-fw*.01,fw*.045,fw*.03,roll,'#FFFDF6',.12*g.i*f,'screen')
+   blob(x+nx/nl*fw*.035,y+ny/nl*fw*.02,fw*.08,fw*.03,Math.atan2(ny,nx),k.hex,.12*k.i*F,'multiply')})}
+ if(L.glow){const g=L.glow,i=g.i,hi=Q.level>=2
+  ;[[117,fL],[346,fR]].forEach(([idx,f])=>{if(f<.02)return;const [x,y]=P(idx),nx=x-P(1)[0],ny=y-P(1)[1],nl=Math.hypot(nx,ny)||1;
+   const hx=x+nx/nl*fw*.02,hy=y-fw*.012;
+   blob(hx,hy,fw*.11,fw*.06,roll,'#FFEDCF',.16*i*f,'soft-light');
+   if(hi)blob(hx,hy,fw*.07,fw*.04,roll,'#FFF3DC',.12*i*f,'screen')
   });
-  blob(P(168)[0],P(168)[1],fw*.035,fw*.03,roll,g.hex,.2*g.i*F,'screen');
-  if(Q.level>=2)for(const [gp,f] of geoms){if(f<.02)continue;const ip=gp.pts[gp.pts.length-1];spotXY(ip[0],ip[1],fw*.02,'#FFFDF4',.14*g.i*f,'screen')}}
- if(L.brow){const b=L.brow,i=b.i,def=b.f==='defined';[[LBROW,fL],[RBROW,fR]].forEach(([idx,f])=>{if(f<.02)return;const p=path(idx);
-  buildMask(p,fw*.004);
-  tint(b.hex,(.32*i+(def?.08*i:0))*f,'multiply');
-  if(Q.passes>=.8)tint(b.hex,.18*i*f,'soft-light')
+  blob(P(168)[0],P(168)[1],fw*.03,fw*.028,roll,'#FFEDCF',.14*i*F,'soft-light');
+  if(hi)for(const [gp,f] of geoms){if(f<.02)continue;const ip=gp.pts[gp.pts.length-1];spotXY(ip[0],ip[1],fw*.022,'#FFF3DC',.1*i*f,'screen')}}
+ if(L.brow){const b=L.brow,i=b.i,def=b.f==='defined';[[LBROW,fL],[RBROW,fR]].forEach(([idx,f])=>{if(f<.02)return;const p=path(idx),a=dev(P(idx[0])),z=dev(P(idx[idx.length-1]));
+  buildMask(p,fw*.006);
+  tintGrad(()=>{const gr=pigmentCtx.createLinearGradient(a[0],a[1],z[0],z[1]);
+   gr.addColorStop(0,hexA(b.hex,0));gr.addColorStop(.18,hexA(b.hex,def?.72:.6));gr.addColorStop(.5,hexA(b.hex,def?1:.92));gr.addColorStop(.82,hexA(b.hex,def?.72:.6));gr.addColorStop(1,hexA(b.hex,0));return gr},(.34*i+(def?.1*i:0))*f,'multiply');
+  if(Q.passes>=.8)tintGrad(()=>{const gr=pigmentCtx.createLinearGradient(a[0],a[1],z[0],z[1]);
+   gr.addColorStop(0,hexA(b.hex,0));gr.addColorStop(.2,hexA(b.hex,.4));gr.addColorStop(.8,hexA(b.hex,.4));gr.addColorStop(1,hexA(b.hex,0));return gr},.16*i*f,'soft-light')
  })}
  if(L.eyes){const e=L.eyes,i=e.i,hi=Q.level>=2;
   for(const [g,f] of geoms){if(f<.02)continue;
@@ -383,14 +392,27 @@ function draw(v){
      x.beginPath();x.moveTo(up[0][0],up[0][1]);x.lineTo(e2[0],e2[1]);x.lineTo(up[1][0]+g.n[0]*w*.6,up[1][1]+g.n[1]*w*.6);x.lineTo(up[2][0],up[2][1]);x.closePath();x.fill()}
    },Math.min(1,(.5+.5*i)*f))
   }}
- if(L.lash){const m=L.lash,i=m.i,vol=m.f==='volume',N=vol?26:16;for(const [g,f] of geoms){if(f<.02)continue;
-  cx.save();cx.strokeStyle=m.hex;cx.lineCap='round';cx.globalAlpha=Math.min(.82,.8*i*f);
+ if(L.lash){const m=L.lash,i=m.i,vol=m.f==='volume',N=vol?30:20;for(const [g,f] of geoms){if(f<.02)continue;
+  cx.save();cx.fillStyle=m.hex;cx.lineCap='round';
+  const base=g.W*(vol?.012:.0085);
+  cx.globalAlpha=Math.min(.5,.42*i*f);
+  cx.beginPath();for(let k=0;k<g.pts.length;k++){const pt=g.pts[k],o=g.W*.004;k?cx.lineTo(pt[0]+g.n[0]*o,pt[1]+g.n[1]*o):cx.moveTo(pt[0]+g.n[0]*o,pt[1]+g.n[1]*o)}
+  cx.lineWidth=base*1.6;cx.stroke();
+  cx.globalAlpha=Math.min(.72,.62*i*f);
   for(let j=0;j<N;j++){const t=j/(N-1),s=t*(g.pts.length-1),k=Math.min(g.pts.length-2,Math.floor(s)),q=s-k;
    const x=g.pts[k][0]+(g.pts[k+1][0]-g.pts[k][0])*q,y=g.pts[k][1]+(g.pts[k+1][1]-g.pts[k][1])*q;
-   const lean=.75*(1-t)-.15*t,dx=g.n[0]-g.u[0]*lean,dy=g.n[1]-g.u[1]*lean,dl=Math.hypot(dx,dy)||1;
-   const len=g.W*(vol?.14:.105)*(.55+.45*Math.pow(Math.sin(Math.PI*(.08+.84*t)),.8));
-   cx.lineWidth=g.W*(vol?.014:.01)*(.7+.3*Math.sin(Math.PI*t));
-   cx.beginPath();cx.moveTo(x,y);cx.quadraticCurveTo(x+dx/dl*len*.55-g.u[0]*len*.15,y+dy/dl*len*.55-g.u[1]*len*.15,x+dx/dl*len,y+dy/dl*len);cx.stroke()}
+   const jt=Math.abs(Math.sin((j+1)*12.9898)*43758.5453)%1;
+   const lean=.6*(1-t)-.2*t,dx=g.n[0]-g.u[0]*lean,dy=g.n[1]-g.u[1]*lean,dl=Math.hypot(dx,dy)||1;
+   const nx=dx/dl,ny=dy/dl,px=-ny,py=nx;
+   const len=g.W*(vol?.15:.115)*(.6+.4*Math.pow(Math.sin(Math.PI*(.06+.88*t)),.8))*(.82+.36*jt);
+   const w=base*(vol?.6:.5)*(.65+.35*Math.sin(Math.PI*t));
+   const tipx=x+nx*len,tipy=y+ny*len,mx=x+nx*len*.5-g.u[0]*len*.12,my=y+ny*len*.5-g.u[1]*len*.12;
+   cx.beginPath();
+   cx.moveTo(x+px*w/2,y+py*w/2);
+   cx.quadraticCurveTo(mx+px*w*.28,my+py*w*.28,tipx,tipy);
+   cx.quadraticCurveTo(mx-px*w*.28,my-py*w*.28,x-px*w/2,y-py*w/2);
+   cx.closePath();cx.fill();
+  }
   cx.restore()}}
   if(L.lips){const l=L.lips,i=l.i,hi=Q.level>=2,p=new Path2D();path(LIPO,p);path(LIPI,p);
   buildMask(p,fw*.012,'evenodd');
